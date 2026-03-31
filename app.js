@@ -636,6 +636,68 @@ function closeCardModal(e) {
 // ══════════════════════════════════════════════
 //  WELCOME MODAL
 // ══════════════════════════════════════════════
+let peer = null;
+let conn = null;
+let isHost = false;
+
+function hostOnlineGame() {
+  if (peer) return;
+  isHost = true;
+  $("multi-setup").classList.add("hidden");
+  $("online-status").classList.remove("hidden");
+  $("online-status").textContent = "Generando sala...";
+
+  peer = new Peer();
+  peer.on('open', (id) => {
+    $("online-status").textContent = "Esperando rival...";
+    $("my-peer-id").textContent = id;
+    $("room-id-display").classList.remove("hidden");
+  });
+
+  peer.on('connection', (c) => {
+    conn = c;
+    setupConnection();
+  });
+}
+
+function joinOnlineGame() {
+  const rid = $("join-room-id").value.trim();
+  if (!rid) return alert("Introduce un ID de sala");
+  
+  isHost = false;
+  if (peer) peer.destroy();
+  peer = new Peer();
+  
+  peer.on('open', () => {
+    conn = peer.connect(rid);
+    setupConnection();
+  });
+}
+
+function setupConnection() {
+  conn.on('open', () => {
+    conn.send({ 
+      type: 'HANDSHAKE', 
+      username: GS.username, 
+      customTeam: GS.customTeam,
+      teamId: GS.teamId, 
+      roster: GS.roster 
+    });
+  });
+
+  conn.on('data', (data) => {
+    if (data.type === 'HANDSHAKE') {
+      startMatch("ONLINE_REAL", "HARD", data);
+      if (isHost) {
+         conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster });
+      }
+    }
+    if (data.type === 'INNING_SYNC') {
+      executeSyncedInning(data);
+    }
+  });
+}
+
 function showWelcome(starterIds) {
   const t = getTeam(GS.teamId);
   const players = starterIds.map(id => getPlayerById(id)).filter(Boolean);
@@ -712,57 +774,6 @@ function generateRandomTeam(level = "EASY") {
   });
   return team;
 }
-
-let peer = null;
-let conn = null;
-
-function hostOnlineGame() {
-  if (peer) return;
-  $("multi-setup").classList.add("hidden");
-  $("online-status").classList.remove("hidden");
-  $("online-status").textContent = "Generando sala...";
-
-  peer = new Peer();
-  peer.on('open', (id) => {
-    $("online-status").textContent = "Esperando rival...";
-    $("my-peer-id").textContent = id;
-    $("room-id-display").classList.remove("hidden");
-  });
-
-  peer.on('connection', (c) => {
-    conn = c;
-    setupConnection();
-  });
-}
-
-function joinOnlineGame() {
-  const rid = $("join-room-id").value.trim();
-  if (!rid) return alert("Introduce un ID de sala");
-  
-  if (peer) peer.destroy();
-  peer = new Peer();
-  
-  peer.on('open', () => {
-    conn = peer.connect(rid);
-    setupConnection();
-  });
-}
-
-function setupConnection() {
-  conn.on('open', () => {
-    conn.send({ type: 'HANDSHAKE', username: GS.username, teamId: GS.teamId, roster: GS.roster });
-  });
-
-  conn.on('data', (data) => {
-    if (data.type === 'HANDSHAKE') {
-      startMatch("ONLINE_REAL", "HARD", data);
-      if (peer.id < conn.peer) {
-         conn.send({ type: 'HANDSHAKE', username: GS.username, teamId: GS.teamId, roster: GS.roster });
-      }
-    }
-  });
-}
-
 function startMatch(mode, level = "EASY", rivalData = null) {
   closeGameMenu();
   const homeTeam = getTeam(GS.teamId);
@@ -772,7 +783,7 @@ function startMatch(mode, level = "EASY", rivalData = null) {
   else if(mode === "ONLINE") awayTeamDesc = { name: "RIVAL_MOD" + Math.floor(Math.random()*999), emoji: "🔥", primary: "#c4a000" };
   else if(mode === "ONLINE_REAL" && rivalData) {
     const rTeam = getTeam(rivalData.teamId);
-    awayTeamDesc = { name: rivalData.username, emoji: rTeam ? rTeam.emoji : "👤", primary: rTeam ? rTeam.primary : "#c4a000" };
+    awayTeamDesc = { name: rivalData.customTeam || rivalData.username, emoji: rTeam ? rTeam.emoji : "👤", primary: rTeam ? rTeam.primary : "#c4a000" };
   }
   else awayTeamDesc = { name: "Rival", emoji: "👤", primary: "#444" };
 
@@ -785,7 +796,8 @@ function startMatch(mode, level = "EASY", rivalData = null) {
     homeRoster: (GS.roster && GS.roster.length) ? [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9) : [1,2,3,4,5,6,7,8,9],
     awayRoster: (mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
     currentStat: null,
-    isLocked: false
+    isLocked: false,
+    rivalData: rivalData
   };
 
   // Setup UI
@@ -802,94 +814,101 @@ function startMatch(mode, level = "EASY", rivalData = null) {
   document.documentElement.style.setProperty("--home-primary", homeTeam ? homeTeam.primary : "#444");
   document.documentElement.style.setProperty("--away-primary", awayTeamDesc.primary);
 
+  // If online guest, show "Waiting for host"
+  const mActions = $("m-actions");
+  mActions.innerHTML = "";
+  if (mode === "ONLINE_REAL" && !isHost) {
+    mActions.innerHTML = `<span style="color:rgba(255,255,255,.4); font-size:.8rem; font-style:italic">Esperando que el Host inicie la entrada...</span>`;
+  } else {
+    mActions.innerHTML = `<button class="btn-match" onclick="nextInning()">SIGUIENTE ENTRADA ⚾</button>`;
+  }
+
   $("match-modal").classList.remove("hidden");
 }
 
 // (End of Match System)
 
 function nextInning() {
-  try {
-    if (matchState.inning > 9) {
-      finishMatch();
-      return;
-    }
-    if (matchState.isLocked) return;
-    matchState.isLocked = true;
-    
-    // Safety watchdog: auto-unlock if stuck for 3 seconds
-    setTimeout(() => { if (matchState.isLocked) { matchState.isLocked = false; const b = $("m-actions").querySelector("button"); if(b) b.disabled = false; } }, 3000);
-
-    const btn = $("m-actions").querySelector("button");
-    if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
-
-    // Clear previous UI
-    $("m-battle-res").style.display = "none";
-    $("m-stat-value").textContent = "BATEANDO...";
-
-    // Pick players safely
-    const hIdx = (matchState.inning - 1) % (matchState.homeRoster.length || 1);
-    const aIdx = (matchState.inning - 1) % (matchState.awayRoster.length || 1);
-    
-    let homeP = getPlayerById(matchState.homeRoster[hIdx]);
-    let awayP = getPlayerById(matchState.awayRoster[aIdx]);
-    
-    // Final fallbacks if missing
-    if (!homeP) homeP = getPlayerById(1) || PLAYERS[0];
-    if (!awayP) awayP = getPlayerById(2) || PLAYERS[1];
-
-    // Build cards
-    $("m-card-home").innerHTML = "";
-    $("m-card-away").innerHTML = "";
-    $("m-card-home").appendChild(makeCard(homeP));
-    $("m-card-away").appendChild(makeCard(awayP));
-    
-    $("m-inning").textContent = matchState.inning;
-
-    // Stat Battle
-    const isPitcher = homeP.stats.ERA !== undefined;
-    const statsDef = isPitcher ? ["ERA", "WHIP", "SO"] : ["AVG", "OPS", "HR"];
-    const statDef = statsDef[Math.floor(Math.random() * statsDef.length)];
-    matchState.currentStat = statDef;
-
-    $("m-stat-name").textContent = "DUELO POR: " + statDef;
-    
-    const valH = homeP.stats[statDef] || 0;
-    const valA = awayP.stats[statDef] || 0;
-
-    setTimeout(() => {
-      $("m-stat-value").textContent = `${valH} vs ${valA}`;
-      
-      let homeWins = false;
-      if (statDef === "ERA" || statDef === "WHIP") {
-        homeWins = valH < valA;
-      } else {
-        homeWins = valH > valA;
-      }
-
-      if (homeWins) {
-        matchState.homeScore++;
-        showBattleResult("¡CARRERA!", "#4caf50");
-      } else if (valH === valA) {
-        showBattleResult("OUT", "#aaa");
-      } else {
-        matchState.awayScore++;
-        showBattleResult("RIVAL ANOTA", "#ef5350");
-      }
-
-      $("m-home-score").textContent = matchState.homeScore;
-      $("m-away-score").textContent = matchState.awayScore;
-      
-      matchState.inning++;
-      matchState.isLocked = false;
-      if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
-    }, 1000); // Faster feedback
-  } catch (err) {
-    console.error("Match Error:", err);
-    matchState.isLocked = false;
-    alert("¡Ups! Hubo un error en el campo. Sigue jugando.");
-    matchState.inning++;
-    nextInning();
+  if (matchState.inning > 9) {
+    finishMatch();
+    return;
   }
+  if (matchState.isLocked) return;
+  matchState.isLocked = true;
+  
+  const btn = $("m-actions").querySelector("button");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
+
+  // Pick players
+  const hIdx = (matchState.inning - 1) % 9;
+  const aIdx = (matchState.inning - 1) % 9;
+  const homePObj = getPlayerById(matchState.homeRoster[hIdx]) || PLAYERS[0];
+  const awayPObj = getPlayerById(matchState.awayRoster[aIdx]) || PLAYERS[1];
+
+  const isPitcher = homePObj.stats.ERA !== undefined;
+  const statsDef = isPitcher ? ["ERA", "WHIP", "SO"] : ["AVG", "OPS", "HR"];
+  const statDef = statsDef[Math.floor(Math.random() * statsDef.length)];
+
+  if (matchState.mode === "ONLINE_REAL" && isHost && conn) {
+    conn.send({
+      type: 'INNING_SYNC',
+      stat: statDef,
+      homePId: homePObj.id,
+      awayPId: awayPObj.id
+    });
+  }
+
+  doBattle(homePObj, awayPObj, statDef);
+}
+
+function executeSyncedInning(data) {
+  // Guest receives host choice but swaps perspectives
+  const homeP = getPlayerById(data.awayPId) || PLAYERS[0];
+  const awayP = getPlayerById(data.homePId) || PLAYERS[1];
+  doBattle(homeP, awayP, data.stat);
+}
+
+function doBattle(p1, p2, stat) {
+  matchState.isLocked = true;
+  $("m-battle-res").style.display = "none";
+  $("m-stat-value").textContent = "BATEANDO...";
+
+  $("m-card-home").innerHTML = "";
+  $("m-card-away").innerHTML = "";
+  $("m-card-home").appendChild(makeCard(p1));
+  $("m-card-away").appendChild(makeCard(p2));
+  
+  $("m-inning").textContent = matchState.inning;
+  $("m-stat-name").textContent = "DUELO POR: " + stat;
+  
+  const val1 = p1.stats[stat] || 0;
+  const val2 = p2.stats[stat] || 0;
+
+  setTimeout(() => {
+    $("m-stat-value").textContent = `${val1} vs ${val2}`;
+    
+    let p1Wins = false;
+    if (stat === "ERA" || stat === "WHIP") p1Wins = val1 < val2;
+    else p1Wins = val1 > val2;
+
+    if (p1Wins) {
+      matchState.homeScore++;
+      showBattleResult("¡CARRERA!", "#4caf50");
+    } else if (val1 === val2) {
+      showBattleResult("OUT", "#aaa");
+    } else {
+      matchState.awayScore++;
+      showBattleResult("RIVAL ANOTA", "#ef5350");
+    }
+
+    $("m-home-score").textContent = matchState.homeScore;
+    $("m-away-score").textContent = matchState.awayScore;
+    
+    matchState.inning++;
+    matchState.isLocked = false;
+    const btn = $("m-actions").querySelector("button");
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  }, 1200);
 }
 
 function showBattleResult(text, color) {
