@@ -767,7 +767,7 @@ function openLineup(mode, level = "EASY", rivalData = null) {
   pendingMatchParams = { mode, level, rivalData };
   selectedLineupIds = [];
   $("lineup-modal").classList.remove("hidden");
-  $("lineup-lbl-count").textContent = "0 / 9";
+  updateLineupLabel();
   $("btn-start-match").classList.add("disabled");
   
   const grid = $("lineup-grid");
@@ -783,6 +783,9 @@ function openLineup(mode, level = "EASY", rivalData = null) {
 }
 
 function toggleLineup(pid) {
+  const p = getPlayerById(pid);
+  if (!p) return;
+
   const idx = selectedLineupIds.indexOf(pid);
   const card = document.getElementById(`lineup-card-${pid}`);
   
@@ -791,12 +794,44 @@ function toggleLineup(pid) {
     if (card) card.classList.remove("selected");
   } else {
     if (selectedLineupIds.length >= 9) return showToast("Máximo 9 jugadores", "warn");
+    
+    // Position Validation (5 P, 1 IF, 2 OF, 1 C)
+    const counts = getLineupPositionCounts();
+    const isP = p.pos === "SP" || p.pos === "RP";
+    const isIF = ["1B","2B","3B","SS"].includes(p.pos);
+    const isOF = p.pos === "OF";
+    const isC = p.pos === "C";
+
+    if (isP && counts.p >= 5) return showToast("Límite: 5 Pitchers", "warn");
+    if (isIF && counts.if >= 1) return showToast("Límite: 1 Infielder", "warn");
+    if (isOF && counts.of >= 2) return showToast("Límite: 2 Outfielders", "warn");
+    if (isC && counts.c >= 1) return showToast("Límite: 1 Catcher", "warn");
+
     selectedLineupIds.push(pid);
     if (card) card.classList.add("selected");
   }
   
-  $("lineup-lbl-count").textContent = `${selectedLineupIds.length} / 9`;
-  $("btn-start-match").classList.toggle("disabled", selectedLineupIds.length !== 9);
+  updateLineupLabel();
+}
+
+function getLineupPositionCounts() {
+  const counts = { p:0, if:0, of:0, c:0 };
+  selectedLineupIds.forEach(id => {
+    const player = getPlayerById(id);
+    if (!player) return;
+    if (player.pos === "SP" || player.pos === "RP") counts.p++;
+    else if (["1B","2B","3B","SS"].includes(player.pos)) counts.if++;
+    else if (player.pos === "OF") counts.of++;
+    else if (player.pos === "C") counts.c++;
+  });
+  return counts;
+}
+
+function updateLineupLabel() {
+  const c = getLineupPositionCounts();
+  $("lineup-lbl-count").innerHTML = `P: ${c.p}/5 | IF: ${c.if}/1 | OF: ${c.of}/2 | C: ${c.c}/1`;
+  const isComplete = (c.p === 5 && c.if === 1 && c.of === 2 && c.c === 1);
+  $("btn-start-match").classList.toggle("disabled", !isComplete);
 }
 
 function confirmLineup() {
