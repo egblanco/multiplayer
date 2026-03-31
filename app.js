@@ -137,18 +137,19 @@ function selectLoginTeam(teamId) {
 }
 
 function checkStartBtn() {
-  const inp = $("username-input");
-  const btn = $("btn-start");
-  if (!inp || !btn) return;
-  const name = inp.value.trim();
-  btn.classList.toggle("disabled", !name || !selectedTeamId);
+  const name = $("username-input").value.trim();
+  const mail = $("email-input").value.trim();
+  const ctm  = $("custom-team-name").value.trim();
+  const btn  = $("btn-start");
+  if (!btn) return;
+  btn.classList.toggle("disabled", !name || !mail || !ctm || !selectedTeamId);
 }
 
 function startGame() {
-  const name = document.getElementById("username-input").value.trim();
-  if (!name || !selectedTeamId) return;
-  const btn = document.getElementById("btn-start");
-  if (btn.classList.contains("disabled")) return;
+  const name = $("username-input").value.trim();
+  const mail = $("email-input").value.trim();
+  const ctm  = $("custom-team-name").value.trim();
+  if (!name || !mail || !ctm || !selectedTeamId) return;
 
   // 18 jugadores - el peor de cada posición del roster
   const slots = [
@@ -164,7 +165,6 @@ function startGame() {
   const starterIds = [];
 
   slots.forEach(pos => {
-    // Worst player of this position not already picked
     const candidate = PLAYERS
       .filter(p => p.pos === pos && !used.has(p.id))
       .sort((a, b) => a.rating - b.rating)[0];
@@ -177,11 +177,13 @@ function startGame() {
   GS = {
     loggedIn: true,
     username: name,
+    email: mail,
+    customTeam: ctm,
     teamId: selectedTeamId,
     coins: 1000,
     roster: [...starterIds],
     lastPackDate: null,
-    history: [], // [{opponent, myScore, opScore, result}]
+    history: [],
     stats: { wins: 0, losses: 0 }
   };
   saveGS();
@@ -201,9 +203,9 @@ function showGame() {
 function initGame() {
   const t = getTeam(GS.teamId);
   // Header
-  document.getElementById("hdr-manager").textContent = `${t ? t.emoji : ""} ${GS.username}`;
+  $("hdr-manager").textContent = `${GS.customTeam} – ${GS.username}`;
   updateCoinsDisplay();
-  // Build filter dropdowns
+  // Build filters
   buildTeamFilterDropdown("filter-team");
   buildTeamFilterDropdown("market-team");
   // Build sections
@@ -241,8 +243,8 @@ function showSection(sec) {
 // ══════════════════════════════════════════════
 function buildMyTeam() {
   const team = getTeam(GS.teamId);
-  const title = document.getElementById("myteam-title");
-  if (title && team) title.textContent = `${team.emoji} ${team.city} ${team.name} – Mi Plantilla`;
+  const title = $("myteam-title");
+  if (title) title.innerHTML = `🛡️ ${GS.customTeam} <span style="font-size:.8rem;color:rgba(255,255,255,.3);font-family:Inter">(${team?team.name:''})</span>`;
 
   const rosterPlayers = GS.roster.map(id => getPlayerById(id)).filter(Boolean);
   const avgRating = rosterPlayers.length ? Math.round(rosterPlayers.reduce((s,p)=>s+p.rating,0)/rosterPlayers.length) : 0;
