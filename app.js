@@ -181,6 +181,8 @@ function startGame() {
     coins: 1000,
     roster: [...starterIds],
     lastPackDate: null,
+    history: [], // [{opponent, myScore, opScore, result}]
+    stats: { wins: 0, losses: 0 }
   };
   saveGS();
   showGame();
@@ -247,11 +249,22 @@ function buildMyTeam() {
 
   // Stats bar
   const statsDiv = document.getElementById("my-roster-stats");
+  const wins = GS.stats ? GS.stats.wins : 0;
+  const losses = GS.stats ? GS.stats.losses : 0;
   statsDiv.innerHTML = `
     <div class="rs-badge"><span class="rs-val">${rosterPlayers.length}</span><span class="rs-lbl">JUGADORES</span></div>
     <div class="rs-badge"><span class="rs-val" style="color:#ffd700">${GS.coins.toLocaleString()}</span><span class="rs-lbl">💰 MONEDAS</span></div>
-    <div class="rs-badge"><span class="rs-val">${avgRating || "–"}</span><span class="rs-lbl">RATING MED.</span></div>
-    <div class="rs-badge"><span class="rs-val" style="font-size:1rem">${25 - rosterPlayers.length}</span><span class="rs-lbl">PLAZAS LIBRES</span></div>`;
+    <div class="rs-badge"><span class="rs-val">${wins || 0}W - ${losses || 0}L</span><span class="rs-lbl">RECOD PTDA.</span></div>
+    <div class="rs-badge"><span class="rs-val">${avgRating || "–"}</span><span class="rs-lbl">RATING MED.</span></div>`;
+
+  // Historial de partidos (mini log)
+  if (GS.history && GS.history.length) {
+    const log = document.createElement("div");
+    log.className = "recent-matches-pill";
+    log.innerHTML = "🏆 Últimos: " + GS.history.slice(-5).reverse().map(m => 
+      `<span style="color:${m.res==='W'?'#4caf50':'#ef5350'}">${m.myS}-${m.opS}</span>`).join(" ");
+    statsDiv.appendChild(log);
+  }
 
   // Position slots summary
   const pos = document.getElementById("my-roster-positions");
@@ -664,6 +677,7 @@ function buildTeamFilterDropdown(selId) {
 // ══════════════════════════════════════════════
 let matchState = {
   mode: null, // "AI" or "HUMAN"
+  level: "EASY",
   inning: 1,
   homeScore: 0,
   awayScore: 0,
@@ -682,29 +696,37 @@ function closeGameMenu(e) {
   }
 }
 
-function generateRandomTeam() {
+function generateRandomTeam(level = "EASY") {
   const team = [];
   const slots = ["SP","SP","SP","RP","RP","C","1B","2B","3B","SS","OF","OF","OF","DH"];
+  
+  // Rating ranges for levels
+  let minR = 60, maxR = 75;
+  if (level === "MEDIUM") { minR = 78; maxR = 86; }
+  if (level === "HARD") { minR = 88; maxR = 100; }
+
   slots.forEach(pos => {
-    const pool = PLAYERS.filter(p => p.pos === pos);
+    let pool = PLAYERS.filter(p => p.pos === pos && p.rating >= minR && p.rating <= maxR);
+    if (!pool.length) pool = PLAYERS.filter(p => p.pos === pos); // fallback
     const p = pool[Math.floor(Math.random() * pool.length)];
     if (p) team.push(p.id);
   });
   return team;
 }
 
-function startMatch(mode) {
+function startMatch(mode, level = "EASY") {
   closeGameMenu();
   const homeTeam = getTeam(GS.teamId);
-  const awayTeam = mode === "AI" ? { name: "Comp", emoji: "🤖", primary: "#555" } : { name: "Rival", emoji: "👤", primary: "#444" };
+  const awayTeam = mode === "AI" ? { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' } : { name: "Rival", emoji: "👤", primary: "#444" };
 
   matchState = {
     mode: mode,
+    level: level,
     inning: 1,
     homeScore: 0,
     awayScore: 0,
     homeRoster: [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
-    awayRoster: generateRandomTeam().sort(() => 0.5 - Math.random()).slice(0, 9),
+    awayRoster: generateRandomTeam(level).sort(() => 0.5 - Math.random()).slice(0, 9),
     currentStat: null
   };
 
@@ -792,14 +814,37 @@ function showBattleResult(text, color) {
 
 function finishMatch() {
   const won = matchState.homeScore > matchState.awayScore;
-  const reward = won ? (matchState.mode === "AI" ? 100 : 250) : 10;
+  const draw = matchState.homeScore === matchState.awayScore;
   
+  let reward = won ? 100 : (draw ? 40 : 10);
+  if (matchState.mode === "HUMAN") {
+    reward = won ? 250 : (draw ? 80 : 20);
+  } else {
+    // AI levels
+    if (matchState.level === "EASY") reward = won ? 80 : (draw ? 20 : 5);
+    if (matchState.level === "MEDIUM") reward = won ? 150 : (draw ? 50 : 15);
+    if (matchState.level === "HARD") reward = won ? 350 : (draw ? 100 : 30);
+  }
+  
+  // Save stats
+  if (!GS.stats) GS.stats = { wins: 0, losses: 0 };
+  if (won) GS.stats.wins++;
+  else if (!draw) GS.stats.losses++;
+
+  if (!GS.history) GS.history = [];
+  GS.history.push({
+    myS: matchState.homeScore,
+    opS: matchState.awayScore,
+    res: won ? 'W' : (draw ? 'D' : 'L'),
+    date: new Date().toISOString()
+  });
+
   GS.coins += reward;
   saveGS();
   updateCoinsDisplay();
 
-  $("pm-emoji").textContent = won ? "🏆" : "⚾";
-  $("pm-title").textContent = won ? "¡VICTORIA!" : "FIN DEL JUEGO";
+  $("pm-emoji").textContent = won ? "🏆" : (draw ? "🤝" : "⚾");
+  $("pm-title").textContent = won ? "¡VICTORIA!" : (draw ? "EMPATE" : "FIN DEL JUEGO");
   $("pm-score").textContent = `${matchState.homeScore} - ${matchState.awayScore}`;
   $("pm-reward").textContent = `Recibes 💰 ${reward}`;
 

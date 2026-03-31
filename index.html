@@ -219,12 +219,18 @@
     <h2 class="gm-title">MODO PARTIDAZO</h2>
     <p class="gm-desc">Elige tu oponente y gana monedas 💰</p>
     <div class="gm-options">
-      <div class="gm-option" onclick="startMatch('AI')">
-        <div class="gmo-icon">🤖</div>
-        <div class="gmo-text">
-          <strong>VS COMPUTADORA</strong>
-          <span>Oponente aleatorio (Fácil)</span>
-          <span class="gmo-reward">Premio: 💰 100</span>
+      <div class="gm-option-group">
+        <div class="gm-option" style="cursor:default">
+          <div class="gmo-icon">🤖</div>
+          <div class="gmo-text">
+            <strong>VS COMPUTADORA</strong>
+            <span>Elige el nivel de dificultad:</span>
+            <div class="gm-levels">
+              <button class="btn-level easy" onclick="startMatch('AI', 'EASY')">Fácil 💰80</button>
+              <button class="btn-level medium" onclick="startMatch('AI', 'MEDIUM')">Medio 💰150</button>
+              <button class="btn-level hard" onclick="startMatch('AI', 'HARD')">Difícil 💰350</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="gm-option" onclick="startMatch('HUMAN')">
