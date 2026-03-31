@@ -637,14 +637,14 @@ function closeCardModal(e) {
 //  WELCOME MODAL
 // ══════════════════════════════════════════════
 function generateShortId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed ambiguous O, 0, I, 1
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
   let res = "";
-  for (let i = 0; i < 5; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 4; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
   return res;
 }
 
 function hostOnlineGame(mode = null) {
-  if (peer) return;
+  if (peer) peer.destroy();
   isHost = true;
   wagerMode = (mode === 'WAGER');
   if (wagerMode) return openWagerSelector();
@@ -660,16 +660,18 @@ function startHost() {
   peer = new Peer(sid);
   
   peer.on('open', (id) => {
-    $("online-status").textContent = wagerMode ? "Esperando rival para APUESTA..." : "Esperando rival...";
+    $("online-status").textContent = wagerMode ? "APUESTA ACTIVADA 💎" : "SALA CREADA";
     $("my-peer-id").textContent = id;
     $("room-id-display").classList.remove("hidden");
   });
 
   peer.on('error', (err) => {
     if (err.type === 'unavailable-id') {
-      peer.destroy();
-      peer = null;
-      return startHost(); // Retry if ID exists
+      startHost(); 
+    } else {
+      console.error("PeerJS Error:", err.type);
+      alert("Error de conexión: " + err.type);
+      location.reload();
     }
   });
 
@@ -680,8 +682,8 @@ function startHost() {
 }
 
 function joinOnlineGame() {
-  const rid = $("join-room-id").value.trim();
-  if (!rid) return alert("Introduce un ID de sala");
+  const rid = $("join-room-id").value.trim().toUpperCase();
+  if (!rid) return alert("Introduce un código");
   isHost = false;
   if (peer) peer.destroy();
   peer = new Peer();
@@ -689,6 +691,7 @@ function joinOnlineGame() {
     conn = peer.connect(rid);
     setupConnection();
   });
+  peer.on('error', () => alert("No se encontró la sala " + rid));
 }
 
 function setupConnection() {
