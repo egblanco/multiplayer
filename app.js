@@ -652,9 +652,11 @@ function hostOnlineGame(mode = null) {
 }
 
 function startHost() {
+  if (peer) { try { peer.destroy(); } catch(e){} }
+  
   $("multi-setup").classList.add("hidden");
   $("online-status").classList.remove("hidden");
-  $("online-status").textContent = "Generando sala...";
+  $("online-status").textContent = "Generando código...";
 
   const sid = generateShortId();
   peer = new Peer(sid);
@@ -667,11 +669,11 @@ function startHost() {
 
   peer.on('error', (err) => {
     if (err.type === 'unavailable-id') {
-      startHost(); 
+      setTimeout(startHost, 300); // Retry after short delay
     } else {
       console.error("PeerJS Error:", err.type);
-      alert("Error de conexión: " + err.type);
-      location.reload();
+      $("online-status").textContent = "Error: " + err.type;
+      setTimeout(() => location.reload(), 2000);
     }
   });
 
@@ -684,14 +686,35 @@ function startHost() {
 function joinOnlineGame() {
   const rid = $("join-room-id").value.trim().toUpperCase();
   if (!rid) return alert("Introduce un código");
+  
   isHost = false;
-  if (peer) peer.destroy();
+  if (peer) { try { peer.destroy(); } catch(e){} }
+  
+  $("online-status").classList.remove("hidden");
+  $("online-status").textContent = "Buscando sala " + rid + "...";
+  
   peer = new Peer();
   peer.on('open', () => {
     conn = peer.connect(rid);
+    
+    // Watchdog for connection timeout
+    const timeout = setTimeout(() => {
+      if (conn && !conn.open) {
+        alert("No se pudo conectar con " + rid);
+        location.reload();
+      }
+    }, 8000);
+
     setupConnection();
+    
+    conn.on('open', () => clearTimeout(timeout));
   });
-  peer.on('error', () => alert("No se encontró la sala " + rid));
+
+  peer.on('error', (err) => {
+    console.error("Join Error:", err);
+    alert("Error al intentar unirse.");
+    location.reload();
+  });
 }
 
 function setupConnection() {
