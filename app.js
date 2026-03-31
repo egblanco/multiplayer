@@ -639,17 +639,25 @@ function closeCardModal(e) {
 let peer = null;
 let conn = null;
 let isHost = false;
+let wagerMode = false;
+let myWagerId = null;
 
-function hostOnlineGame() {
+function hostOnlineGame(mode = null) {
   if (peer) return;
   isHost = true;
+  wagerMode = (mode === 'WAGER');
+  if (wagerMode) return openWagerSelector();
+  startHost();
+}
+
+function startHost() {
   $("multi-setup").classList.add("hidden");
   $("online-status").classList.remove("hidden");
   $("online-status").textContent = "Generando sala...";
 
   peer = new Peer();
   peer.on('open', (id) => {
-    $("online-status").textContent = "Esperando rival...";
+    $("online-status").textContent = wagerMode ? "Esperando rival para APUESTA..." : "Esperando rival...";
     $("my-peer-id").textContent = id;
     $("room-id-display").classList.remove("hidden");
   });
@@ -663,11 +671,9 @@ function hostOnlineGame() {
 function joinOnlineGame() {
   const rid = $("join-room-id").value.trim();
   if (!rid) return alert("Introduce un ID de sala");
-  
   isHost = false;
   if (peer) peer.destroy();
   peer = new Peer();
-  
   peer.on('open', () => {
     conn = peer.connect(rid);
     setupConnection();
@@ -681,20 +687,50 @@ function setupConnection() {
       username: GS.username, 
       customTeam: GS.customTeam,
       teamId: GS.teamId, 
-      roster: GS.roster 
+      roster: GS.roster,
+      isWager: wagerMode,
+      wagerId: myWagerId
     });
   });
 
   conn.on('data', (data) => {
     if (data.type === 'HANDSHAKE') {
-      openLineup("ONLINE_REAL", "HARD", data);
+      if (data.isWager && !myWagerId) {
+         wagerMode = true;
+         pendingMatchParams = { rivalData: data };
+         return openWagerSelector();
+      }
+      startMatch(data.isWager ? "WAGER" : "ONLINE_REAL", "HARD", data, data.isWager ? [myWagerId] : null);
       if (isHost) {
-         conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster });
+         conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster, isWager: wagerMode, wagerId: myWagerId });
       }
     }
     if (data.type === 'INNING_SYNC') {
       executeSyncedInning(data);
     }
+  });
+}
+
+function openWagerSelector() {
+  pendingMatchParams = { mode: "WAGER" };
+  $("lineup-modal").classList.remove("hidden");
+  $("lineup-lbl-count").textContent = "SELECCIONA 1 CARTA PARA APOSTAR";
+  $("btn-start-match").classList.add("disabled");
+  $("btn-start-match").textContent = "CONFIRMAR APUESTA 💎";
+  
+  const grid = $("lineup-grid");
+  grid.innerHTML = "";
+  
+  GS.roster.forEach(pid => {
+    const p = getPlayerById(pid);
+    if (!p) return;
+    const card = makeCard(p, ["wc-mini"], () => {
+      myWagerId = pid;
+      grid.querySelectorAll(".wc-card").forEach(c => c.classList.remove("selected"));
+      card.classList.add("selected");
+      $("btn-start-match").classList.remove("disabled");
+    });
+    grid.appendChild(card);
   });
 }
 
@@ -835,6 +871,16 @@ function updateLineupLabel() {
 }
 
 function confirmLineup() {
+  if (wagerMode) {
+    closeLineup();
+    $("btn-start-match").textContent = "¡CANTAR PLAY! ⚾"; // Reset label
+    if (isHost) startHost();
+    else if (pendingMatchParams.rivalData) {
+       // already joined and handshake received, start match
+       startMatch("WAGER", "HARD", pendingMatchParams.rivalData, [myWagerId]);
+    }
+    return;
+  }
   if (selectedLineupIds.length !== 9) return;
   const { mode, level, rivalData } = pendingMatchParams;
   closeLineup();
@@ -866,6 +912,7 @@ function startMatch(mode, level = "EASY", rivalData = null, customLineup = null)
   let awayTeamDesc;
   if(mode === "AI") awayTeamDesc = { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' };
   else if(mode === "ONLINE") awayTeamDesc = { name: "RIVAL_MOD" + Math.floor(Math.random()*999), emoji: "🔥", primary: "#c4a000" };
+  else if(mode === "WAGER") awayTeamDesc = { name: (rivalData.customTeam || rivalData.username) + " 💎", emoji: "🃏", primary: "#ff9800" };
   else if(mode === "ONLINE_REAL" && rivalData) {
     const rTeam = getTeam(rivalData.teamId);
     awayTeamDesc = { name: rivalData.customTeam || rivalData.username, emoji: rTeam ? rTeam.emoji : "👤", primary: rTeam ? rTeam.primary : "#c4a000" };
@@ -879,7 +926,7 @@ function startMatch(mode, level = "EASY", rivalData = null, customLineup = null)
     homeScore: 0,
     awayScore: 0,
     homeRoster: customLineup || [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
-    awayRoster: (mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
+    awayRoster: (mode === "WAGER") ? [rivalData.wagerId] : ((mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9)),
     currentStat: null,
     isLocked: false,
     rivalData: rivalData
@@ -1009,6 +1056,23 @@ function finishMatch() {
   const won = matchState.homeScore > matchState.awayScore;
   const draw = matchState.homeScore === matchState.awayScore;
   
+  if (matchState.mode === "WAGER" && !draw) {
+    if (won) {
+      // Gain rival card
+      const newCardId = matchState.rivalData.wagerId;
+      if (!GS.roster.includes(newCardId)) {
+        GS.roster.push(newCardId);
+        showToast("¡HAS GANADO UNA CARTA!", "success");
+      }
+    } else {
+      // Lose my card
+      GS.roster = GS.roster.filter(id => id !== myWagerId);
+      showToast("¡HAS PERDIDO TU CARTA!", "error");
+    }
+    myWagerId = null;
+    wagerMode = false;
+  }
+
   let reward = won ? 100 : (draw ? 40 : 10);
   if (matchState.mode === "HUMAN") {
     reward = won ? 250 : (draw ? 80 : 20);

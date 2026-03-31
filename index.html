@@ -264,7 +264,10 @@
           <span>Juega contra un amigo a distancia</span>
           <div class="multi-actions">
             <div id="multi-setup">
-              <button class="btn-level medium" onclick="hostOnlineGame()">CREAR SALA</button>
+              <div style="display:flex; gap:.5rem">
+                <button class="btn-level medium" onclick="hostOnlineGame()">CREAR SALA</button>
+                <button class="btn-level hard" onclick="hostOnlineGame('WAGER')" style="background:#ff9800; border:2px solid gold">💎 APOSTAR CARTA</button>
+              </div>
               <div style="margin-top:.5rem; display:flex; gap:.5rem">
                 <input type="text" id="join-room-id" placeholder="ID de sala..." class="form-input" style="padding:.3rem">
                 <button class="btn-level easy" onclick="joinOnlineGame()">UNIRSE</button>
