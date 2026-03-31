@@ -728,21 +728,21 @@ function setupConnection() {
       teamId: GS.teamId, 
       roster: GS.roster,
       isWager: wagerMode,
-      wagerId: myWagerId,
+      wagerLineup: wagerMode ? selectedLineupIds : null,
       totalRounds: totalRounds
     });
   });
 
   conn.on('data', (data) => {
     if (data.type === 'HANDSHAKE') {
-      if (data.isWager && !myWagerId) {
+      if (data.isWager && !selectedLineupIds.length) {
          wagerMode = true;
          pendingMatchParams = { rivalData: data };
          return openWagerSelector();
       }
-      startMatch(data.isWager ? "WAGER" : "ONLINE_REAL", "HARD", data, data.isWager ? [myWagerId] : null);
+      startMatch(data.isWager ? "WAGER" : "ONLINE_REAL", "HARD", data, data.isWager ? selectedLineupIds : null);
       if (isHost) {
-         conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster, isWager: wagerMode, wagerId: myWagerId });
+         conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster, isWager: wagerMode, wagerLineup: wagerMode ? selectedLineupIds : null, totalRounds: totalRounds });
       }
     }
     if (data.type === 'INNING_SYNC') {
@@ -752,11 +752,14 @@ function setupConnection() {
 }
 
 function openWagerSelector() {
+  const totalR = parseInt($("match-rounds-sel").value) || 9;
   pendingMatchParams = { mode: "WAGER" };
+  selectedLineupIds = [];
+  
   $("lineup-modal").classList.remove("hidden");
-  $("lineup-lbl-count").textContent = "SELECCIONA 1 CARTA PARA APOSTAR";
+  $("lineup-lbl-count").textContent = `SELECCIONA ${totalR} PRODUCTOS PARA APOSTAR (1 POR RONDA)`;
   $("btn-start-match").classList.add("disabled");
-  $("btn-start-match").textContent = "CONFIRMAR APUESTA 💎";
+  $("btn-start-match").textContent = "CONFIRMAR APUESTAS 💎";
   
   const grid = $("lineup-grid");
   grid.innerHTML = "";
@@ -765,11 +768,19 @@ function openWagerSelector() {
     const p = getPlayerById(pid);
     if (!p) return;
     const card = makeCard(p, ["wc-mini"], () => {
-      myWagerId = pid;
-      grid.querySelectorAll(".wc-card").forEach(c => c.classList.remove("selected"));
-      card.classList.add("selected");
-      $("btn-start-match").classList.remove("disabled");
+      const idx = selectedLineupIds.indexOf(pid);
+      if (idx > -1) {
+        selectedLineupIds.splice(idx, 1);
+        document.getElementById(`wager-card-${pid}`).classList.remove("selected");
+      } else {
+        if (selectedLineupIds.length >= totalR) return showToast(`Solo ${totalR} cartas para apostar`, "warn");
+        selectedLineupIds.push(pid);
+        document.getElementById(`wager-card-${pid}`).classList.add("selected");
+      }
+      $("lineup-lbl-count").textContent = `Apostando: ${selectedLineupIds.length} / ${totalR}`;
+      $("btn-start-match").classList.toggle("disabled", selectedLineupIds.length !== totalR);
     });
+    card.id = `wager-card-${pid}`;
     grid.appendChild(card);
   });
 }
@@ -967,10 +978,11 @@ function startMatch(mode, level = "EASY", rivalData = null, customLineup = null)
     homeScore: 0,
     awayScore: 0,
     homeRoster: customLineup || [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
-    awayRoster: (mode === "WAGER") ? [rivalData.wagerId] : ((mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9)),
+    awayRoster: (mode === "WAGER") ? (rivalData.wagerLineup || []) : ((mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9)),
     currentStat: null,
     isLocked: false,
-    rivalData: rivalData
+    rivalData: rivalData,
+    wagerResults: [] 
   };
 
   // Setup UI
@@ -1066,11 +1078,14 @@ function doBattle(p1, p2, stat) {
 
     if (p1Wins) {
       matchState.homeScore++;
+      matchState.wagerResults.push({ inning: matchState.inning, winner: 'home' });
       showBattleResult("¡CARRERA!", "#4caf50");
     } else if (val1 === val2) {
+      matchState.wagerResults.push({ inning: matchState.inning, winner: 'draw' });
       showBattleResult("OUT", "#aaa");
     } else {
       matchState.awayScore++;
+      matchState.wagerResults.push({ inning: matchState.inning, winner: 'away' });
       showBattleResult("RIVAL ANOTA", "#ef5350");
     }
 
@@ -1097,21 +1112,30 @@ function finishMatch() {
   const won = matchState.homeScore > matchState.awayScore;
   const draw = matchState.homeScore === matchState.awayScore;
   
-  if (matchState.mode === "WAGER" && !draw) {
-    if (won) {
-      // Gain rival card
-      const newCardId = matchState.rivalData.wagerId;
-      if (!GS.roster.includes(newCardId)) {
-        GS.roster.push(newCardId);
-        showToast("¡HAS GANADO UNA CARTA!", "success");
+  if (matchState.mode === "WAGER") {
+    let gainedCount = 0;
+    let lostCount = 0;
+    
+    matchState.wagerResults.forEach(res => {
+      const hCard = matchState.homeRoster[res.inning - 1];
+      const aCard = matchState.awayRoster[res.inning - 1];
+      
+      if (res.winner === 'home') {
+        if (aCard && !GS.roster.includes(aCard)) {
+          GS.roster.push(aCard);
+          gainedCount++;
+        }
+      } else if (res.winner === 'away') {
+        GS.roster = GS.roster.filter(id => id !== hCard);
+        lostCount++;
       }
-    } else {
-      // Lose my card
-      GS.roster = GS.roster.filter(id => id !== myWagerId);
-      showToast("¡HAS PERDIDO TU CARTA!", "error");
-    }
-    myWagerId = null;
+    });
+
+    if (gainedCount > 0) showToast(`¡GANASTE ${gainedCount} CARTAS! 🎉`, "success");
+    if (lostCount > 0) showToast(`Perdiste ${lostCount} cartas... 💀`, "error");
+    
     wagerMode = false;
+    selectedLineupIds = [];
   }
 
   let reward = won ? 100 : (draw ? 40 : 10);
