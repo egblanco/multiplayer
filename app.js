@@ -1,0 +1,827 @@
+// ══════════════════════════════════════════════
+//  MLB CARD GAME – APP.JS  (Manager Mode 2025)
+// ══════════════════════════════════════════════
+
+// ── SAFE ELEMENT HELPER ───────────────────────
+function $(id) { return document.getElementById(id); }
+
+// ── GAME STATE ────────────────────────────────
+let GS = null; // loaded from localStorage
+
+function loadGS() {
+  const raw = localStorage.getItem("mlb_game_state");
+  GS = raw ? JSON.parse(raw) : null;
+}
+function saveGS() { localStorage.setItem("mlb_game_state", JSON.stringify(GS)); }
+
+// ── PRICING ───────────────────────────────────
+function playerPrice(rating) {
+  if (rating >= 95) return 800;
+  if (rating >= 88) return 400;
+  if (rating >= 80) return 180;
+  if (rating >= 70) return 70;
+  return 25;
+}
+
+// POS_EMOJI y getRarity ya están definidos en data.js
+// getTeam / getPlayerById
+function getTeam(id) { return TEAMS.find(t => t.id === id); }
+function getPlayerById(id) { return PLAYERS.find(p => p.id === id); }
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+window.addEventListener("load", () => {
+  // Always hide splash after 3s regardless of errors
+  setTimeout(() => {
+    const splash = $("splash");
+    if (splash) splash.classList.add("hidden");
+    try {
+      loadGS();
+      if (GS && GS.loggedIn) {
+        showGame();
+      } else {
+        showLogin();
+      }
+    } catch(err) {
+      console.error("Init error:", err);
+      // Show login as fallback
+      try { showLogin(); } catch(e2) {
+        document.body.innerHTML = `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0a0e1a;color:#fff;font-family:sans-serif;text-align:center;padding:2rem">
+          <div><div style="font-size:3rem;margin-bottom:1rem">⚾</div><h2>MLB Card Game</h2><p style="color:rgba(255,255,255,.5);margin-top:.5rem">Error al iniciar. Abre la consola (F12) para ver detalles.</p><p style="color:red;font-size:.8rem;margin-top:1rem">${err.message}</p></div>
+        </div>`;
+      }
+    }
+  }, 3000);
+});
+
+// Attach username input listener once DOM ready (scripts are at bottom so DOM is ready)
+document.addEventListener("DOMContentLoaded", () => {
+  const inp = $("username-input");
+  if (inp) inp.addEventListener("input", checkStartBtn);
+});
+// Also try immediately in case DOMContentLoaded already fired
+(function tryAttachInput() {
+  const inp = $("username-input");
+  if (inp && !inp._listenerAttached) {
+    inp.addEventListener("input", checkStartBtn);
+    inp._listenerAttached = true;
+  }
+})();
+
+// ══════════════════════════════════════════════
+//  LOGIN SCREEN
+// ══════════════════════════════════════════════
+let selectedTeamId = null;
+let loginLeagueFilter = "ALL";
+
+function showLogin() {
+  const login = $("screen-login");
+  const game  = $("screen-game");
+  if (login) login.classList.remove("hidden");
+  if (game)  game.classList.add("hidden");
+  buildLoginTeams();
+  // Attach input listener now too
+  const inp = $("username-input");
+  if (inp && !inp._listenerAttached) {
+    inp.addEventListener("input", checkStartBtn);
+    inp._listenerAttached = true;
+  }
+}
+
+function buildLoginTeams() {
+  renderLoginTeams();
+}
+
+function filterLoginTeams() {
+  renderLoginTeams();
+}
+
+function setLoginLeague(league, btn) {
+  loginLeagueFilter = league;
+  document.querySelectorAll(".ltab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderLoginTeams();
+}
+
+function renderLoginTeams() {
+  const q = (document.getElementById("login-team-search")?.value || "").toLowerCase();
+  const grid = document.getElementById("login-teams-grid");
+  grid.innerHTML = "";
+  TEAMS
+    .filter(t => loginLeagueFilter === "ALL" || t.league === loginLeagueFilter)
+    .filter(t => !q || t.name.toLowerCase().includes(q) || t.city.toLowerCase().includes(q))
+    .forEach(t => {
+      const btn = document.createElement("button");
+      btn.className = "login-team-btn" + (t.id === selectedTeamId ? " selected" : "");
+      btn.style.setProperty("--team-primary", t.primary);
+      btn.innerHTML = `<div class="ltb-emoji">${t.emoji}</div><div class="ltb-name">${t.name}</div><div class="ltb-city">${t.city}</div>`;
+      btn.onclick = () => selectLoginTeam(t.id);
+      grid.appendChild(btn);
+    });
+}
+
+function selectLoginTeam(teamId) {
+  selectedTeamId = teamId;
+  const t = getTeam(teamId);
+  // update UI
+  document.querySelectorAll(".login-team-btn").forEach(b => b.classList.remove("selected"));
+  // re-render to apply selected class
+  renderLoginTeams();
+  const banner = document.getElementById("selected-team-banner");
+  banner.classList.remove("hidden");
+  banner.innerHTML = `<span style="font-size:1.8rem">${t.emoji}</span><div><strong>${t.city} ${t.name}</strong><div style="font-size:.75rem;color:rgba(255,255,255,.45)">${t.league} · ${t.division}</div></div>`;
+  const btn = document.getElementById("btn-start");
+  btn.classList.toggle("disabled", !document.getElementById("username-input").value.trim());
+  checkStartBtn();
+}
+
+function checkStartBtn() {
+  const inp = $("username-input");
+  const btn = $("btn-start");
+  if (!inp || !btn) return;
+  const name = inp.value.trim();
+  btn.classList.toggle("disabled", !name || !selectedTeamId);
+}
+
+function startGame() {
+  const name = document.getElementById("username-input").value.trim();
+  if (!name || !selectedTeamId) return;
+  const btn = document.getElementById("btn-start");
+  if (btn.classList.contains("disabled")) return;
+
+  // 18 jugadores - el peor de cada posición del roster
+  const slots = [
+    "SP","SP","SP","SP","SP",   // 5 abridores
+    "RP","RP","RP",              // 3 relevistas
+    "C","C",                     // 2 catchers
+    "1B","2B","3B","SS",         // cuadro interno
+    "OF","OF","OF",              // jardineros
+    "DH"                         // DH
+  ];
+
+  const used = new Set();
+  const starterIds = [];
+
+  slots.forEach(pos => {
+    // Worst player of this position not already picked
+    const candidate = PLAYERS
+      .filter(p => p.pos === pos && !used.has(p.id))
+      .sort((a, b) => a.rating - b.rating)[0];
+    if (candidate) {
+      starterIds.push(candidate.id);
+      used.add(candidate.id);
+    }
+  });
+
+  GS = {
+    loggedIn: true,
+    username: name,
+    teamId: selectedTeamId,
+    coins: 1000,
+    roster: [...starterIds],
+    lastPackDate: null,
+  };
+  saveGS();
+  showGame();
+  showWelcome(starterIds);
+}
+
+// ══════════════════════════════════════════════
+//  GAME
+// ══════════════════════════════════════════════
+function showGame() {
+  document.getElementById("screen-login").classList.add("hidden");
+  document.getElementById("screen-game").classList.remove("hidden");
+  initGame();
+}
+
+function initGame() {
+  const t = getTeam(GS.teamId);
+  // Header
+  document.getElementById("hdr-manager").textContent = `${t ? t.emoji : ""} ${GS.username}`;
+  updateCoinsDisplay();
+  // Build filter dropdowns
+  buildTeamFilterDropdown("filter-team");
+  buildTeamFilterDropdown("market-team");
+  // Build sections
+  buildMyTeam();
+  buildMarket();
+  buildColeccion();
+  buildEquipos();
+  buildDailySection();
+  showSection("miequipo");
+}
+
+function logOut() {
+  if (!confirm("¿Cerrar sesión? Tu progreso se guardará.")) return;
+  document.getElementById("screen-game").classList.add("hidden");
+  selectedTeamId = null;
+  showLogin();
+}
+
+function updateCoinsDisplay() {
+  document.getElementById("coins-display").textContent = GS.coins.toLocaleString();
+}
+
+// ── NAVIGATION ─────────────────────────────────
+function showSection(sec) {
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  const el = document.getElementById("sec-" + sec);
+  const btn = document.getElementById("nav-" + sec);
+  if (el) el.classList.add("active");
+  if (btn) btn.classList.add("active");
+}
+
+// ══════════════════════════════════════════════
+//  MY TEAM
+// ══════════════════════════════════════════════
+function buildMyTeam() {
+  const team = getTeam(GS.teamId);
+  const title = document.getElementById("myteam-title");
+  if (title && team) title.textContent = `${team.emoji} ${team.city} ${team.name} – Mi Plantilla`;
+
+  const rosterPlayers = GS.roster.map(id => getPlayerById(id)).filter(Boolean);
+  const avgRating = rosterPlayers.length ? Math.round(rosterPlayers.reduce((s,p)=>s+p.rating,0)/rosterPlayers.length) : 0;
+
+  // Stats bar
+  const statsDiv = document.getElementById("my-roster-stats");
+  statsDiv.innerHTML = `
+    <div class="rs-badge"><span class="rs-val">${rosterPlayers.length}</span><span class="rs-lbl">JUGADORES</span></div>
+    <div class="rs-badge"><span class="rs-val" style="color:#ffd700">${GS.coins.toLocaleString()}</span><span class="rs-lbl">💰 MONEDAS</span></div>
+    <div class="rs-badge"><span class="rs-val">${avgRating || "–"}</span><span class="rs-lbl">RATING MED.</span></div>
+    <div class="rs-badge"><span class="rs-val" style="font-size:1rem">${25 - rosterPlayers.length}</span><span class="rs-lbl">PLAZAS LIBRES</span></div>`;
+
+  // Position slots summary
+  const pos = document.getElementById("my-roster-positions");
+  const needed = ["SP","SP","SP","C","1B","2B","3B","SS","OF","OF","OF","RP","DH"];
+  pos.innerHTML = needed.map(p => {
+    const filled = rosterPlayers.filter(pl => pl.pos === p);
+    const clss = filled.length ? "filled" : "empty";
+    const name = filled.length ? filled[0].name.split(" ").pop() : "Libre";
+    return `<div class="pos-slot ${clss}"><span class="pos-tag">${p}</span><span>${name}</span></div>`;
+  }).join("");
+
+  // Player cards
+  const grid = document.getElementById("my-roster-grid");
+  grid.innerHTML = "";
+  if (!rosterPlayers.length) {
+    grid.innerHTML = '<div class="no-results">No tienes jugadores. ¡Ve al Mercado!</div>';
+    return;
+  }
+  rosterPlayers.sort((a,b) => b.rating - a.rating).forEach(p => {
+    const card = makeCard(p, [], () => openCardModal(p));
+    grid.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════
+//  MARKET
+// ══════════════════════════════════════════════
+function buildMarket() {
+  filterMarket();
+}
+
+function filterMarket() {
+  const q = (document.getElementById("market-search")?.value || "").toLowerCase();
+  const team = document.getElementById("market-team")?.value || "";
+  const pos = document.getElementById("market-pos")?.value || "";
+  const sort = document.getElementById("market-sort")?.value || "rating";
+
+  let list = PLAYERS.filter(p => {
+    if (GS.roster.includes(p.id)) return false; // already signed
+    if (q && !p.name.toLowerCase().includes(q)) return false;
+    if (team && p.team !== team) return false;
+    if (pos && p.pos !== pos) return false;
+    return true;
+  });
+
+  if (sort === "rating") list.sort((a,b) => b.rating - a.rating);
+  else if (sort === "price-asc") list.sort((a,b) => playerPrice(a.rating) - playerPrice(b.rating));
+  else if (sort === "price-desc") list.sort((a,b) => playerPrice(b.rating) - playerPrice(a.rating));
+  else list.sort((a,b) => a.name.localeCompare(b.name));
+
+  const grid = document.getElementById("market-grid");
+  const empty = document.getElementById("market-empty");
+  grid.innerHTML = "";
+  if (!list.length) { empty.classList.remove("hidden"); return; }
+  empty.classList.add("hidden");
+
+  list.forEach(p => {
+    const t = getTeam(p.team);
+    const price = playerPrice(p.rating);
+    const canAfford = GS.coins >= price;
+    const statKeys = p.stats.ERA !== undefined ? ["ERA","W","SO"] : ["AVG","HR","RBI"];
+    const statsHtml = statKeys.map(k => {
+      const v = p.stats[k];
+      const d = (k==="AVG"||k==="ERA"||k==="WHIP"||k==="OPS") ? Number(v).toFixed(3) : v;
+      return `<div class="mcs-item"><span class="mcs-val">${d}</span><span class="mcs-lbl">${k}</span></div>`;
+    }).join("");
+    const card = document.createElement("div");
+    card.className = "market-card";
+    if (t) { card.style.setProperty("--team-primary", t.primary); }
+    card.innerHTML = `
+      <div class="mc-top">
+        <div class="mc-avatar">${POS_EMOJI[p.pos]||"⚾"}</div>
+        <div class="mc-rating" style="background:${t?t.primary:"#c41e3a"}">${p.rating}</div>
+      </div>
+      <div class="mc-name">${p.name}</div>
+      <div class="mc-pos-team"><span>${p.pos}</span><span>${t ? t.city+" "+t.name : p.team}</span></div>
+      <div class="mc-stats">${statsHtml}</div>
+      <div class="mc-footer">
+        <span class="mc-price">💰 ${price.toLocaleString()}</span>
+        <button class="btn-sign" ${canAfford?"":'disabled title="No tienes suficientes monedas"'} onclick="openContractModal(${p.id})">
+          ${canAfford ? "✍️ Firmar" : "🚫 Sin fondos"}
+        </button>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+// ── CONTRACT MODAL ──────────────────────────────
+let signingPlayerId = null;
+
+function openContractModal(playerId) {
+  signingPlayerId = playerId;
+  const p = getPlayerById(playerId);
+  const t = getTeam(p.team);
+  const price = playerPrice(p.rating);
+  const canAfford = GS.coins >= price;
+  const content = document.getElementById("contract-modal-content");
+  const mini = makeCard(p, ["cm-player-card"]);
+  content.innerHTML = "";
+  content.appendChild(mini);
+  const info = document.createElement("div");
+  info.innerHTML = `
+    <div class="cm-title">Contrato para<br/>${p.name}</div>
+    <div class="cm-price-box">
+      <span class="cm-price-val">💰 ${price.toLocaleString()}</span>
+      <span class="cm-price-lbl">monedas</span>
+    </div>
+    <div class="cm-balance">Tu saldo: 💰 ${GS.coins.toLocaleString()} ${!canAfford ? '– <span style="color:#ef5350">¡Sin fondos suficientes!</span>' : ""}</div>
+    ${canAfford
+      ? `<button class="btn-confirm-sign" onclick="signPlayer(${playerId})">✍️ FIRMAR CONTRATO</button>`
+      : `<div class="cm-no-funds">Necesitas ${(price - GS.coins).toLocaleString()} monedas más</div>`}
+    <button class="btn-cancel-sign" onclick="closeContractModal()">Cancelar</button>`;
+  content.appendChild(info);
+  document.getElementById("contract-modal").classList.remove("hidden");
+}
+
+function closeContractModal(e) {
+  if (!e || e.target === document.getElementById("contract-modal")) {
+    document.getElementById("contract-modal").classList.add("hidden");
+  }
+}
+
+function signPlayer(playerId) {
+  const p = getPlayerById(playerId);
+  const price = playerPrice(p.rating);
+  if (GS.coins < price) { showToast("💸 No tienes suficientes monedas","error"); return; }
+  if (GS.roster.includes(playerId)) { showToast("Ya tienes este jugador","info"); return; }
+  GS.coins -= price;
+  GS.roster.push(playerId);
+  saveGS();
+  closeContractModal();
+  showToast(`✅ ¡${p.name} firmado por 💰${price.toLocaleString()}!`, "success");
+  buildMyTeam();
+  buildMarket();
+  updateCoinsDisplay();
+}
+
+// ══════════════════════════════════════════════
+//  DAILY PACK
+// ══════════════════════════════════════════════
+function buildDailySection() {
+  const container = document.getElementById("daily-status");
+  const cardsArea = document.getElementById("daily-cards-area");
+  cardsArea.innerHTML = "";
+
+  const today = new Date().toISOString().slice(0, 10);
+  const alreadyOpened = GS.lastPackDate === today;
+
+  if (alreadyOpened) {
+    // Show countdown to midnight
+    container.innerHTML = `
+      <div class="ds-icon">📦</div>
+      <div class="ds-title">Sobre abierto hoy</div>
+      <div class="ds-desc">Ya abriste tu sobre gratuito. Vuelve mañana.</div>
+      <div class="ds-countdown" id="pack-countdown">--:--:--</div>
+      <div class="ds-countdown-lbl">próximo sobre disponible en</div>`;
+    startCountdown();
+  } else {
+    container.innerHTML = `
+      <div class="ds-icon">🎁</div>
+      <div class="ds-title">¡Sobre disponible!</div>
+      <div class="ds-desc">Tienes un sobre gratis esperándote. Contiene 5 cartas aleatorias de la MLB.</div>
+      <button class="btn-open-pack" onclick="openDailyPack()">🎁 ¡ABRIR SOBRE!</button>`;
+  }
+}
+
+function startCountdown() {
+  const el = document.getElementById("pack-countdown");
+  if (!el) return;
+  const tick = () => {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const diff = midnight - now;
+    const h = String(Math.floor(diff / 3600000)).padStart(2, "0");
+    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+    if (el) el.textContent = `${h}:${m}:${s}`;
+  };
+  tick();
+  const iv = setInterval(() => { if (!document.getElementById("pack-countdown")) { clearInterval(iv); return; } tick(); }, 1000);
+}
+
+function openDailyPack() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (GS.lastPackDate === today) { showToast("Ya abriste el sobre de hoy", "info"); return; }
+
+  // Draw 5 random cards (weighted: more chance of common)
+  const pool = [...PLAYERS];
+  const drawn = [];
+  for (let i = 0; i < 5; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    drawn.push(pool.splice(idx, 1)[0]);
+  }
+
+  GS.lastPackDate = today;
+  saveGS();
+
+  // Update UI
+  buildDailySection(); // shows countdown
+  const cardsArea = document.getElementById("daily-cards-area");
+  cardsArea.innerHTML = "<div style='text-align:center;width:100%;font-family:Bebas Neue,cursive;font-size:1.2rem;letter-spacing:3px;color:rgba(255,255,255,.5);margin-bottom:.5rem'>✨ CARTAS DE HOY ✨</div>";
+  drawn.forEach((p, i) => {
+    const card = makeCard(p, ["daily-new-card"], () => openCardModal(p));
+    card.style.setProperty("--i", i);
+    cardsArea.appendChild(card);
+  });
+  showToast("🎁 ¡5 cartas nuevas desbloqueadas!", "success");
+}
+
+// ══════════════════════════════════════════════
+//  COLECCIÓN
+// ══════════════════════════════════════════════
+function buildColeccion() {
+  filterCards();
+}
+
+function filterCards() {
+  const q = (document.getElementById("search-input")?.value || "").toLowerCase();
+  const team = document.getElementById("filter-team")?.value || "";
+  const pos = document.getElementById("filter-pos")?.value || "";
+  const league = document.getElementById("filter-league")?.value || "";
+
+  const list = PLAYERS.filter(p => {
+    const t = getTeam(p.team);
+    if (q && !p.name.toLowerCase().includes(q)) return false;
+    if (team && p.team !== team) return false;
+    if (pos && p.pos !== pos) return false;
+    if (league && t && t.league !== league) return false;
+    return true;
+  });
+
+  const grid = document.getElementById("cards-grid");
+  const noRes = document.getElementById("no-results");
+  grid.innerHTML = "";
+  if (!list.length) { noRes?.classList.remove("hidden"); return; }
+  noRes?.classList.add("hidden");
+  list.forEach(p => {
+    const owned = GS.roster.includes(p.id);
+    const card = makeCard(p, [], () => openCardModal(p));
+    if (owned) card.style.outline = "2px solid rgba(76,175,80,.5)";
+    grid.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════
+//  EQUIPOS
+// ══════════════════════════════════════════════
+function buildEquipos() {
+  const alGrid = document.getElementById("al-teams");
+  const nlGrid = document.getElementById("nl-teams");
+  TEAMS.forEach(t => {
+    const count = PLAYERS.filter(p => p.team === t.id).length;
+    const card = document.createElement("div");
+    card.className = "team-card";
+    card.innerHTML = `<div class="team-emoji">${t.emoji}</div><div class="team-card-name">${t.name}</div><div class="team-card-city">${t.city}</div><div class="team-card-count">${count} jugadores</div>`;
+    card.onclick = () => openTeamView(t);
+    (t.league === "AL" ? alGrid : nlGrid).appendChild(card);
+  });
+}
+
+function openTeamView(team) {
+  const players = PLAYERS.filter(p => p.team === team.id).sort((a,b) => b.rating - a.rating);
+  const overlay = document.createElement("div");
+  overlay.className = "team-expanded";
+  overlay.innerHTML = `
+    <div class="te-header">
+      <button class="te-close" onclick="this.closest('.team-expanded').remove()">✕</button>
+      <div style="font-size:2rem">${team.emoji}</div>
+      <div class="te-title">${team.city.toUpperCase()} ${team.name.toUpperCase()}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:.78rem">${team.league} · ${team.division} &bull; ${players.length} jugadores</div>
+    </div>
+    <div class="te-grid" id="te-inner"></div>`;
+  document.body.appendChild(overlay);
+  const grid = overlay.querySelector("#te-inner");
+  players.forEach(p => { grid.appendChild(makeCard(p, [], () => openCardModal(p))); });
+}
+
+// ══════════════════════════════════════════════
+//  CARD BUILDER
+// ══════════════════════════════════════════════
+function makeCard(p, extraClasses = [], clickFn = null) {
+  const team = getTeam(p.team);
+  const rarity = getRarity(p.rating);
+  const primary = team ? team.primary : "#1a2a4a";
+  const secondary = team ? team.secondary : "#0a0e1a";
+  const statKeys = p.stats.ERA !== undefined ? ["ERA","W","SO","WHIP"] : ["AVG","HR","RBI","OPS"];
+  const statsBarHtml = statKeys.map(k => {
+    const v = p.stats[k];
+    const d = (k==="AVG"||k==="ERA"||k==="WHIP"||k==="OPS") ? Number(v).toFixed(3) : v;
+    return `<div class="cf-stat"><span class="cf-stat-val">${d}</span><span class="cf-stat-lbl">${k}</span></div>`;
+  }).join("");
+  const backRows = Object.entries(p.stats).map(([k,v]) => {
+    const label = {ERA:"ERA",W:"Victorias",SO:"Ponches",IP:"Innings",WHIP:"WHIP",SV:"Salvamentos",AVG:"Promedio",HR:"Jonrones",RBI:"Carreras Imp.",OPS:"OPS",SB:"Bas. Rob."}[k]||k;
+    const d = (k==="AVG"||k==="ERA"||k==="WHIP"||k==="OPS") ? Number(v).toFixed(3) : v;
+    return `<div class="cb-stat-row"><span class="cbs-label">${label}</span><span class="cbs-val">${d}</span></div>`;
+  }).join("");
+
+  const div = document.createElement("div");
+  div.className = `player-card rarity-${rarity}${extraClasses.length ? " " + extraClasses.join(" ") : ""}`;
+  div.style.setProperty("--team-primary", primary);
+  div.style.setProperty("--team-secondary", secondary);
+  div.innerHTML = `
+    <div class="card-inner">
+      <div class="card-face card-front">
+        <div class="cf-header"><span class="cf-number">#${p.id}</span><span class="cf-rating">${p.rating}</span></div>
+        <div class="cf-avatar">${POS_EMOJI[p.pos]||"⚾"}</div>
+        <div class="cf-info">
+          <div class="cf-name">${p.name}</div>
+          <div class="cf-pos-team"><span class="cf-pos">${p.pos}</span><span class="cf-team-abbr">${team?team.abbr:p.team}</span></div>
+          <div class="cf-stat-bar">${statsBarHtml}</div>
+        </div>
+      </div>
+      <div class="card-face card-back">
+        <div class="cb-title">MLB CARD 2025</div>
+        <div class="cb-name">${p.name}</div>
+        <div class="cb-stats">${backRows}</div>
+        <div class="cb-country">${p.country} · ${p.age} años</div>
+      </div>
+    </div>`;
+  div.addEventListener("click", clickFn || (() => div.classList.toggle("flipped")));
+  return div;
+}
+
+// ══════════════════════════════════════════════
+//  CARD MODAL
+// ══════════════════════════════════════════════
+function openCardModal(p) {
+  const team = getTeam(p.team);
+  const price = playerPrice(p.rating);
+  const owned = GS.roster.includes(p.id);
+  const content = document.getElementById("modal-card-content");
+  content.innerHTML = "";
+  const big = makeCard(p, ["modal-big-card"]);
+  big.style.width = "230px"; big.style.height = "330px";
+
+  const statRows = Object.entries(p.stats).map(([k,v]) => {
+    const label = {ERA:"ERA",W:"Victorias",SO:"Ponches",IP:"Innings",WHIP:"WHIP",SV:"Salvamentos",AVG:"Promedio Bateo",HR:"Jonrones",RBI:"Carreras Impulsadas",OPS:"OPS",SB:"Bases Robadas"}[k]||k;
+    const d = (k==="AVG"||k==="ERA"||k==="WHIP"||k==="OPS") ? Number(v).toFixed(3) : v;
+    return `<div class="mst-row"><span class="mst-label">${label}</span><span class="mst-val">${d}</span></div>`;
+  }).join("");
+
+  const info = document.createElement("div");
+  info.style.width = "100%";
+  info.innerHTML = `
+    <div style="font-family:'Bebas Neue',cursive;font-size:1.3rem;letter-spacing:2px;margin-bottom:.3rem">${p.name}</div>
+    <div style="color:rgba(255,255,255,.45);font-size:.76rem;margin-bottom:.8rem">${p.country} &bull; ${team ? team.city+" "+team.name : p.team} &bull; ${p.pos} &bull; ${p.age} años</div>
+    <div class="modal-stats-table">${statRows}</div>
+    <div style="margin-top:1rem;text-align:center">
+      ${owned
+        ? `<div style="color:#4caf50;font-weight:700;font-size:.9rem">✅ Ya en tu plantilla</div>`
+        : GS.coins >= price
+          ? `<button class="btn-start" style="font-size:1rem;padding:.55rem 1.2rem;display:inline-block;width:auto" onclick="signPlayer(${p.id});closeCardModal()">✍️ Firmar – 💰${price.toLocaleString()}</button>`
+          : `<div style="color:rgba(255,255,255,.35);font-size:.8rem">💰 Precio: ${price.toLocaleString()} (sin fondos)</div>`}
+    </div>`;
+  content.appendChild(big);
+  content.appendChild(info);
+  document.getElementById("card-modal").classList.remove("hidden");
+}
+
+function closeCardModal(e) {
+  if (!e || e.target === document.getElementById("card-modal") || e.target.classList.contains("modal-close")) {
+    document.getElementById("card-modal").classList.add("hidden");
+  }
+}
+
+// ══════════════════════════════════════════════
+//  WELCOME MODAL
+// ══════════════════════════════════════════════
+function showWelcome(starterIds) {
+  const t = getTeam(GS.teamId);
+  const players = starterIds.map(id => getPlayerById(id)).filter(Boolean);
+  const wt = document.getElementById("welcome-text");
+  const wc = document.getElementById("welcome-starter-cards");
+  wt.innerHTML = `¡Eres el manager de los <strong>${t.city} ${t.name}</strong> ${t.emoji}<br/>
+    Empiezas con <strong>18 jugadores</strong> — el peor de cada posición del roster
+    (5 SP · 3 RP · 2 C · 4 infield · 3 OF · 1 DH).<br/>
+    Tienes <strong>💰 1,000 monedas</strong> para firmar a los mejores en el Mercado.`;
+  wc.innerHTML = "";
+  players.forEach(p => {
+    const mini = makeCard(p, ["wc-mini"], () => {});
+    mini.style.width = "130px"; mini.style.height = "190px";
+    wc.appendChild(mini);
+  });
+  document.getElementById("welcome-modal").classList.remove("hidden");
+}
+
+function closeWelcome() {
+  document.getElementById("welcome-modal").classList.add("hidden");
+}
+
+// ══════════════════════════════════════════════
+//  TEAM FILTER DROPDOWN BUILDER
+// ══════════════════════════════════════════════
+function buildTeamFilterDropdown(selId) {
+  const sel = document.getElementById(selId);
+  if (!sel) return;
+  // remove existing options except first
+  while (sel.options.length > 1) sel.remove(1);
+  TEAMS.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t.id;
+    o.textContent = `${t.emoji} ${t.city} ${t.name}`;
+    sel.appendChild(o);
+  });
+}
+
+// ══════════════════════════════════════════════
+//  MATCH SYSTEM
+// ══════════════════════════════════════════════
+let matchState = {
+  mode: null, // "AI" or "HUMAN"
+  inning: 1,
+  homeScore: 0,
+  awayScore: 0,
+  homeRoster: [],
+  awayRoster: [],
+  currentStat: null,
+};
+
+function openGameMenu() {
+  $("game-menu-modal").classList.remove("hidden");
+}
+
+function closeGameMenu(e) {
+  if (!e || e.target === $("game-menu-modal") || e.target.classList.contains("modal-close")) {
+    $("game-menu-modal").classList.add("hidden");
+  }
+}
+
+function generateRandomTeam() {
+  const team = [];
+  const slots = ["SP","SP","SP","RP","RP","C","1B","2B","3B","SS","OF","OF","OF","DH"];
+  slots.forEach(pos => {
+    const pool = PLAYERS.filter(p => p.pos === pos);
+    const p = pool[Math.floor(Math.random() * pool.length)];
+    if (p) team.push(p.id);
+  });
+  return team;
+}
+
+function startMatch(mode) {
+  closeGameMenu();
+  const homeTeam = getTeam(GS.teamId);
+  const awayTeam = mode === "AI" ? { name: "Comp", emoji: "🤖", primary: "#555" } : { name: "Rival", emoji: "👤", primary: "#444" };
+
+  matchState = {
+    mode: mode,
+    inning: 1,
+    homeScore: 0,
+    awayScore: 0,
+    homeRoster: [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
+    awayRoster: generateRandomTeam().sort(() => 0.5 - Math.random()).slice(0, 9),
+    currentStat: null
+  };
+
+  // Setup UI
+  $("m-home-name").textContent = homeTeam.name;
+  $("m-home-logo").textContent = homeTeam.emoji;
+  $("m-away-name").textContent = awayTeam.name;
+  $("m-away-logo").textContent = awayTeam.emoji;
+  $("m-home-score").textContent = "0";
+  $("m-away-score").textContent = "0";
+  $("m-inning").textContent = "1";
+  
+  document.documentElement.style.setProperty("--home-primary", homeTeam.primary);
+  document.documentElement.style.setProperty("--away-primary", awayTeam.primary);
+
+  $("match-modal").classList.remove("hidden");
+  nextInning();
+}
+
+function nextInning() {
+  if (matchState.inning > 9) {
+    finishMatch();
+    return;
+  }
+
+  // Pick random active players
+  const homeP = getPlayerById(matchState.homeRoster[matchState.inning - 1] || matchState.homeRoster[0]);
+  const awayP = getPlayerById(matchState.awayRoster[matchState.inning - 1] || matchState.awayRoster[0]);
+
+  // Visuals
+  $("m-card-home").innerHTML = "";
+  $("m-card-away").innerHTML = "";
+  $("m-card-home").appendChild(makeCard(homeP));
+  $("m-card-away").appendChild(makeCard(awayP));
+  
+  $("m-battle-res").style.display = "none";
+  $("m-inning").textContent = matchState.inning;
+
+  // Battle Logic
+  const isPitcher = homeP.stats.ERA !== undefined;
+  const stats = isPitcher ? ["ERA", "WHIP", "SO"] : ["AVG", "OPS", "HR"];
+  const stat = stats[Math.floor(Math.random() * stats.length)];
+  matchState.currentStat = stat;
+
+  $("m-stat-name").textContent = "BATAZO POR: " + stat;
+  
+  const valH = homeP.stats[stat];
+  const valA = awayP.stats[stat];
+  $("m-stat-value").textContent = "VS";
+
+  setTimeout(() => {
+    $("m-stat-value").textContent = `${valH} vs ${valA}`;
+    
+    let homeWins = false;
+    if (stat === "ERA" || stat === "WHIP") {
+      homeWins = valH < valA; // Lower is better for pitchers
+    } else {
+      homeWins = valH > valA; // Higher is better for hitters
+    }
+
+    if (homeWins) {
+      matchState.homeScore++;
+      showBattleResult("¡CARRERA!", "#4caf50");
+    } else if (valH === valA) {
+      showBattleResult("OUT", "#aaa");
+    } else {
+      matchState.awayScore++;
+      showBattleResult("PUNTO RIVAL", "#ef5350");
+    }
+
+    $("m-home-score").textContent = matchState.homeScore;
+    $("m-away-score").textContent = matchState.awayScore;
+    matchState.inning++;
+  }, 1000);
+}
+
+function showBattleResult(text, color) {
+  const res = $("m-battle-res");
+  res.textContent = text;
+  res.style.color = color;
+  res.style.display = "block";
+  res.style.animation = "none";
+  setTimeout(() => res.style.animation = "statZoom 0.5s ease", 10);
+}
+
+function finishMatch() {
+  const won = matchState.homeScore > matchState.awayScore;
+  const reward = won ? (matchState.mode === "AI" ? 100 : 250) : 10;
+  
+  GS.coins += reward;
+  saveGS();
+  updateCoinsDisplay();
+
+  $("pm-emoji").textContent = won ? "🏆" : "⚾";
+  $("pm-title").textContent = won ? "¡VICTORIA!" : "FIN DEL JUEGO";
+  $("pm-score").textContent = `${matchState.homeScore} - ${matchState.awayScore}`;
+  $("pm-reward").textContent = `Recibes 💰 ${reward}`;
+
+  $("post-match-modal").classList.remove("hidden");
+}
+
+function closePostMatch() {
+  $("post-match-modal").classList.add("hidden");
+  $("match-modal").classList.add("hidden");
+  buildMyTeam(); // Refresh team view
+}
+
+// ══════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════
+function showToast(msg, type = "info") {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+  const t = document.createElement("div");
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+

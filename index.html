@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>MLB Card Game – Manager Mode</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ══ SPLASH ══ -->
+<div id="splash">
+  <div class="splash-logo">
+    <div class="mlb-badge"><span class="mlb-m">M</span><span class="mlb-l">L</span><span class="mlb-b">B</span></div>
+    <div class="splash-title">CARD GAME</div>
+    <div class="splash-sub">Manager Mode 2025</div>
+    <div class="loading-bar"><div class="loading-fill"></div></div>
+  </div>
+</div>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="screen-login" class="hidden">
+  <div class="login-bg"></div>
+  <div class="login-panel">
+    <div class="login-logo-area">
+      <div class="mlb-badge-lg">MLB</div>
+      <div class="login-title">MANAGER MODE</div>
+      <div class="login-subtitle">Colección Oficial 2025</div>
+    </div>
+    <div class="login-form">
+      <label class="form-label">Tu nombre de manager</label>
+      <input id="username-input" class="form-input" type="text" placeholder="Ej: El Profe, Crack Manager..." maxlength="20"/>
+      <label class="form-label" style="margin-top:1.5rem">Elige tu equipo favorito</label>
+      <div class="login-search-box">
+        <input id="login-team-search" class="form-input" placeholder="🔍 Buscar equipo..." oninput="filterLoginTeams()"/>
+      </div>
+      <div id="login-league-tabs" class="login-league-tabs">
+        <button class="ltab active" onclick="setLoginLeague('ALL',this)">Todos</button>
+        <button class="ltab" onclick="setLoginLeague('AL',this)">Liga Americana</button>
+        <button class="ltab" onclick="setLoginLeague('NL',this)">Liga Nacional</button>
+      </div>
+      <div id="login-teams-grid" class="login-teams-grid"></div>
+      <div id="selected-team-banner" class="sel-team-banner hidden"></div>
+      <button id="btn-start" class="btn-start disabled" onclick="startGame()">⚾ INICIAR JUEGO</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MAIN GAME ══ -->
+<div id="screen-game" class="hidden">
+
+  <!-- Header -->
+  <header id="main-header">
+    <div class="header-inner">
+      <div class="logo-area">
+        <div class="mlb-badge-sm">MLB</div>
+        <div class="header-title">
+          <span class="ht-main">CARD GAME</span>
+          <span class="ht-sub" id="hdr-manager">Manager</span>
+        </div>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" id="nav-miequipo"   onclick="showSection('miequipo')">🏟️ Mi Equipo</button>
+        <button class="nav-btn"        id="nav-mercado"    onclick="showSection('mercado')">🤝 Mercado</button>
+        <button class="nav-btn"        id="nav-daily"      onclick="showSection('daily')">🎁 Sobre Diario</button>
+        <button class="nav-btn"        id="nav-coleccion"  onclick="showSection('coleccion')">🃏 Colección</button>
+        <button class="nav-btn"        id="nav-equipos"    onclick="showSection('equipos')">⚾ Equipos</button>
+      </nav>
+      <div class="hdr-right">
+        <div class="coins-pill">💰 <span id="coins-display">0</span></div>
+        <button class="btn-play-header" onclick="openGameMenu()">⚾ Jugar</button>
+        <button class="btn-logout" onclick="logOut()">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MI EQUIPO ── -->
+  <section id="sec-miequipo" class="section active">
+    <div class="section-header">
+      <h1 id="myteam-title">🏟️ Mi Equipo</h1>
+      <p class="section-desc">Tu plantilla de 25 jugadores. Firma nuevos en el Mercado.</p>
+    </div>
+    <div id="my-roster-stats" class="roster-stats"></div>
+    <div id="my-roster-positions" class="roster-positions"></div>
+    <div id="my-roster-grid" class="cards-grid"></div>
+  </section>
+
+  <!-- ── MERCADO ── -->
+  <section id="sec-mercado" class="section">
+    <div class="section-header">
+      <h1>🤝 Mercado de Contratos</h1>
+      <p class="section-desc">Firma jugadores con tus monedas 💰. Los mejores cuestan más.</p>
+    </div>
+    <div class="market-filters">
+      <div class="search-box" style="flex:1;min-width:180px">
+        <span>🔍</span>
+        <input type="text" id="market-search" placeholder="Buscar jugador..." onkeyup="filterMarket()"/>
+      </div>
+      <select id="market-team" onchange="filterMarket()">
+        <option value="">Todos los equipos</option>
+      </select>
+      <select id="market-pos" onchange="filterMarket()">
+        <option value="">Todas las posiciones</option>
+        <option value="SP">SP – Pitcher Abridor</option>
+        <option value="RP">RP – Relevista</option>
+        <option value="C">C – Catcher</option>
+        <option value="1B">1B – Primera Base</option>
+        <option value="2B">2B – Segunda Base</option>
+        <option value="3B">3B – Tercera Base</option>
+        <option value="SS">SS – Short Stop</option>
+        <option value="OF">OF – Outfield</option>
+        <option value="DH">DH</option>
+      </select>
+      <select id="market-sort" onchange="filterMarket()">
+        <option value="rating">Ordenar: Rating</option>
+        <option value="price-asc">Precio: Menor</option>
+        <option value="price-desc">Precio: Mayor</option>
+        <option value="name">Nombre A-Z</option>
+      </select>
+    </div>
+    <div id="market-grid" class="market-grid"></div>
+    <div id="market-empty" class="no-results hidden">No se encontraron jugadores disponibles.</div>
+  </section>
+
+  <!-- ── SOBRE DIARIO ── -->
+  <section id="sec-daily" class="section">
+    <div class="section-header">
+      <h1>🎁 Sobre Diario</h1>
+      <p class="section-desc">Recibe 5 cartas gratuitas cada día. ¡Vuelve mañana!</p>
+    </div>
+    <div class="daily-container">
+      <div id="daily-status" class="daily-status"></div>
+      <div id="daily-cards-area" class="daily-cards-area"></div>
+    </div>
+  </section>
+
+  <!-- ── COLECCIÓN ── -->
+  <section id="sec-coleccion" class="section">
+    <div class="section-header">
+      <h1>🃏 Colección</h1>
+      <div class="filters">
+        <div class="search-box" style="flex:1;min-width:180px">
+          <span>🔍</span>
+          <input type="text" id="search-input" placeholder="Buscar jugador..." onkeyup="filterCards()"/>
+        </div>
+        <select id="filter-team" onchange="filterCards()"><option value="">Todos los equipos</option></select>
+        <select id="filter-pos" onchange="filterCards()">
+          <option value="">Todas las posiciones</option>
+          <option value="SP">SP</option><option value="RP">RP</option>
+          <option value="C">C</option><option value="1B">1B</option>
+          <option value="2B">2B</option><option value="3B">3B</option>
+          <option value="SS">SS</option><option value="OF">OF</option><option value="DH">DH</option>
+        </select>
+        <select id="filter-league" onchange="filterCards()">
+          <option value="">Ambas Ligas</option>
+          <option value="AL">Liga Americana</option>
+          <option value="NL">Liga Nacional</option>
+        </select>
+      </div>
+    </div>
+    <div id="cards-grid" class="cards-grid"></div>
+    <div id="no-results" class="no-results hidden">No se encontraron jugadores.</div>
+  </section>
+
+  <!-- ── EQUIPOS ── -->
+  <section id="sec-equipos" class="section">
+    <div class="section-header">
+      <h1>⚾ Equipos MLB</h1>
+      <p class="section-desc">Selecciona un equipo para ver su plantilla completa</p>
+    </div>
+    <div class="league-block">
+      <h2 class="league-title al">🏆 Liga Americana</h2>
+      <div id="al-teams" class="teams-grid"></div>
+    </div>
+    <div class="league-block">
+      <h2 class="league-title nl">🏆 Liga Nacional</h2>
+      <div id="nl-teams" class="teams-grid"></div>
+    </div>
+  </section>
+
+</div><!-- /screen-game -->
+
+<!-- ══ CARD MODAL ══ -->
+<div id="card-modal" class="modal-overlay hidden" onclick="closeCardModal(event)">
+  <div class="modal-inner">
+    <button class="modal-close" onclick="closeCardModal()">✕</button>
+    <div id="modal-card-content"></div>
+  </div>
+</div>
+
+<!-- ══ CONTRACT MODAL ══ -->
+<div id="contract-modal" class="modal-overlay hidden" onclick="closeContractModal(event)">
+  <div class="modal-inner contract-modal-inner">
+    <button class="modal-close" onclick="closeContractModal()">✕</button>
+    <div id="contract-modal-content"></div>
+  </div>
+</div>
+
+<!-- ══ TEAM EXPANDED ══ -->
+<div id="team-expanded" class="hidden"></div>
+
+<!-- ══ WELCOME MODAL (first time) ══ -->
+<div id="welcome-modal" class="modal-overlay hidden">
+  <div class="modal-inner welcome-inner">
+    <div class="welcome-emoji">🎉</div>
+    <h2 class="welcome-title">¡Bienvenido, Manager!</h2>
+    <div id="welcome-text" class="welcome-text"></div>
+    <div id="welcome-starter-cards" class="welcome-cards"></div>
+    <button class="btn-start" onclick="closeWelcome()" style="margin-top:1.5rem">¡Comenzar a jugar! ⚾</button>
+  </div>
+</div>
+
+<!-- ══ GAME MENU MODAL ══ -->
+<div id="game-menu-modal" class="modal-overlay hidden" onclick="closeGameMenu(event)">
+  <div class="modal-inner game-menu-inner">
+    <button class="modal-close" onclick="closeGameMenu()">✕</button>
+    <h2 class="gm-title">MODO PARTIDAZO</h2>
+    <p class="gm-desc">Elige tu oponente y gana monedas 💰</p>
+    <div class="gm-options">
+      <div class="gm-option" onclick="startMatch('AI')">
+        <div class="gmo-icon">🤖</div>
+        <div class="gmo-text">
+          <strong>VS COMPUTADORA</strong>
+          <span>Oponente aleatorio (Fácil)</span>
+          <span class="gmo-reward">Premio: 💰 100</span>
+        </div>
+      </div>
+      <div class="gm-option" onclick="startMatch('HUMAN')">
+        <div class="gmo-icon">👤</div>
+        <div class="gmo-text">
+          <strong>VS HUMANO (LOCAL)</strong>
+          <span>Juega contra un amigo</span>
+          <span class="gmo-reward">Premio: 💰 250</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MATCH MODAL ══ -->
+<div id="match-modal" class="modal-overlay hidden">
+  <div class="match-screen">
+    <div class="match-header">
+      <div class="m-team-info m-home">
+        <div id="m-home-logo" class="m-logo">⚾</div>
+        <div id="m-home-name" class="m-name">HOME</div>
+      </div>
+      <div class="m-vs">VS</div>
+      <div class="m-team-info m-away">
+        <div id="m-away-name" class="m-name">AWAY</div>
+        <div id="m-away-logo" class="m-logo">🤖</div>
+      </div>
+    </div>
+
+    <div class="match-field">
+      <div class="m-stat-display">
+        <div id="m-stat-name">PREPARANDO...</div>
+        <div id="m-stat-value">–</div>
+      </div>
+      
+      <div class="m-cards-battle">
+        <div id="m-card-home" class="m-card-slot"></div>
+        <div class="m-result-badge" id="m-battle-res"></div>
+        <div id="m-card-away" class="m-card-slot"></div>
+      </div>
+
+      <div class="m-score-board">
+        <div class="ms-label">ENTRADA <span id="m-inning">1</span></div>
+        <div class="ms-values">
+          <span id="m-home-score">0</span> – <span id="m-away-score">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="match-actions" id="m-actions">
+      <button class="btn-match" onclick="nextInning()">SIGUIENTE ENTRADA ⚾</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ POST MATCH MODAL ══ -->
+<div id="post-match-modal" class="modal-overlay hidden">
+  <div class="modal-inner post-match-inner">
+    <div id="pm-emoji" class="pm-emoji">🏆</div>
+    <h2 id="pm-title" class="pm-title">¡VICTORIA!</h2>
+    <div id="pm-score" class="pm-score">5 - 2</div>
+    <div id="pm-reward" class="pm-reward">Ganaste 💰 100</div>
+    <button class="btn-start" onclick="closePostMatch()" style="margin-top:1.5rem">Regresar</button>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
