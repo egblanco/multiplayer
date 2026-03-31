@@ -636,11 +636,12 @@ function closeCardModal(e) {
 // ══════════════════════════════════════════════
 //  WELCOME MODAL
 // ══════════════════════════════════════════════
-let peer = null;
-let conn = null;
-let isHost = false;
-let wagerMode = false;
-let myWagerId = null;
+function generateShortId() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed ambiguous O, 0, I, 1
+  let res = "";
+  for (let i = 0; i < 5; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+  return res;
+}
 
 function hostOnlineGame(mode = null) {
   if (peer) return;
@@ -655,11 +656,21 @@ function startHost() {
   $("online-status").classList.remove("hidden");
   $("online-status").textContent = "Generando sala...";
 
-  peer = new Peer();
+  const sid = generateShortId();
+  peer = new Peer(sid);
+  
   peer.on('open', (id) => {
     $("online-status").textContent = wagerMode ? "Esperando rival para APUESTA..." : "Esperando rival...";
     $("my-peer-id").textContent = id;
     $("room-id-display").classList.remove("hidden");
+  });
+
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      peer.destroy();
+      peer = null;
+      return startHost(); // Retry if ID exists
+    }
   });
 
   peer.on('connection', (c) => {
@@ -681,6 +692,8 @@ function joinOnlineGame() {
 }
 
 function setupConnection() {
+  const totalRounds = parseInt($("match-rounds-sel").value) || 9;
+
   conn.on('open', () => {
     conn.send({ 
       type: 'HANDSHAKE', 
@@ -689,7 +702,8 @@ function setupConnection() {
       teamId: GS.teamId, 
       roster: GS.roster,
       isWager: wagerMode,
-      wagerId: myWagerId
+      wagerId: myWagerId,
+      totalRounds: totalRounds
     });
   });
 
@@ -923,6 +937,7 @@ function startMatch(mode, level = "EASY", rivalData = null, customLineup = null)
     mode: mode,
     level: level,
     inning: 1,
+    totalInnings: rivalData ? (rivalData.totalRounds || 9) : (parseInt($("match-rounds-sel").value) || 9),
     homeScore: 0,
     awayScore: 0,
     homeRoster: customLineup || [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
@@ -961,7 +976,7 @@ function startMatch(mode, level = "EASY", rivalData = null, customLineup = null)
 // (End of Match System)
 
 function nextInning() {
-  if (matchState.inning > 9) {
+  if (matchState.inning > matchState.totalInnings) {
     finishMatch();
     return;
   }

@@ -248,7 +248,12 @@
           <div class="gmo-icon">🤖</div>
           <div class="gmo-text">
             <strong>VS COMPUTADORA</strong>
-            <span>Elige el nivel de dificultad:</span>
+            <span>Elige entradas:</span>
+            <select id="match-rounds-sel" class="form-input" style="background:#222; color:#fff; border-color:#444; margin-bottom:.5rem">
+              <option value="3">3 Entradas (Rápido)</option>
+              <option value="6">6 Entradas (Normal)</option>
+              <option value="9" selected>9 Entradas (Clásico)</option>
+            </select>
             <div class="gm-levels">
               <button class="btn-level easy" onclick="openLineup('AI', 'EASY')">Fácil 💰80</button>
               <button class="btn-level medium" onclick="openLineup('AI', 'MEDIUM')">Medio 💰150</button>
