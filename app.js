@@ -714,10 +714,23 @@ function generateRandomTeam(level = "EASY") {
   return team;
 }
 
+function startOnlineSearch() {
+  const status = $("online-status");
+  status.classList.remove("hidden");
+  setTimeout(() => {
+    status.classList.add("hidden");
+    startMatch("ONLINE", "HARD"); // Real matches are hard!
+  }, 3000);
+}
+
 function startMatch(mode, level = "EASY") {
   closeGameMenu();
   const homeTeam = getTeam(GS.teamId);
-  const awayTeam = mode === "AI" ? { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' } : { name: "Rival", emoji: "👤", primary: "#444" };
+  
+  let awayTeam;
+  if(mode === "AI") awayTeam = { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' };
+  else if(mode === "ONLINE") awayTeam = { name: "RIVAL_MOD" + Math.floor(Math.random()*999), emoji: "🔥", primary: "#c4a000" };
+  else awayTeam = { name: "Rival", emoji: "👤", primary: "#444" };
 
   matchState = {
     mode: mode,
@@ -726,7 +739,7 @@ function startMatch(mode, level = "EASY") {
     homeScore: 0,
     awayScore: 0,
     homeRoster: [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
-    awayRoster: generateRandomTeam(level).sort(() => 0.5 - Math.random()).slice(0, 9),
+    awayRoster: generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
     currentStat: null
   };
 
@@ -819,6 +832,8 @@ function finishMatch() {
   let reward = won ? 100 : (draw ? 40 : 10);
   if (matchState.mode === "HUMAN") {
     reward = won ? 250 : (draw ? 80 : 20);
+  } else if (matchState.mode === "ONLINE") {
+    reward = won ? 500 : (draw ? 150 : 50);
   } else {
     // AI levels
     if (matchState.level === "EASY") reward = won ? 80 : (draw ? 20 : 5);

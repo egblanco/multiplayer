@@ -197,6 +197,8 @@ body{font-family:'Inter',sans-serif;background:#0a0e1a;color:#e8eaf6;min-height:
 .gmo-text strong{font-family:'Oswald',sans-serif;font-size:1.1rem;letter-spacing:1px;margin-bottom:.15rem}
 .gmo-text span{font-size:.8rem;color:rgba(255,255,255,.4)}
 .gmo-reward{color:#ffd700!important;font-weight:700;margin-top:.4rem;display:block}
+.online-search-status{font-size:.7rem;color:#4488ff;margin-top:.5rem;letter-spacing:1px;font-style:italic;animation:searchPulse 1.5s infinite}
+@keyframes searchPulse{0%,100%{opacity:.4}50%{opacity:1}}
 .gm-levels{display:flex;gap:.5rem;margin-top:.8rem}
 .btn-level{border:none;color:#fff;padding:.4rem .8rem;border-radius:6px;font-family:'Oswald',sans-serif;font-size:.7rem;font-weight:700;cursor:pointer;transition:transform .2s}
 .btn-level:hover{transform:scale(1.05)}
