@@ -687,7 +687,7 @@ function setupConnection() {
 
   conn.on('data', (data) => {
     if (data.type === 'HANDSHAKE') {
-      startMatch("ONLINE_REAL", "HARD", data);
+      openLineup("ONLINE_REAL", "HARD", data);
       if (isHost) {
          conn.send({ type: 'HANDSHAKE', username: GS.username, customTeam: GS.customTeam, teamId: GS.teamId, roster: GS.roster });
       }
@@ -760,6 +760,56 @@ function closeGameMenu(e) {
   }
 }
 
+let pendingMatchParams = null;
+let selectedLineupIds = [];
+
+function openLineup(mode, level = "EASY", rivalData = null) {
+  pendingMatchParams = { mode, level, rivalData };
+  selectedLineupIds = [];
+  $("lineup-modal").classList.remove("hidden");
+  $("lineup-lbl-count").textContent = "0 / 9";
+  $("btn-start-match").classList.add("disabled");
+  
+  const grid = $("lineup-grid");
+  grid.innerHTML = "";
+  
+  GS.roster.forEach(pid => {
+    const p = getPlayerById(pid);
+    if (!p) return;
+    const card = makeCard(p, ["wc-mini"], () => toggleLineup(pid));
+    card.id = `lineup-card-${pid}`;
+    grid.appendChild(card);
+  });
+}
+
+function toggleLineup(pid) {
+  const idx = selectedLineupIds.indexOf(pid);
+  const card = document.getElementById(`lineup-card-${pid}`);
+  
+  if (idx > -1) {
+    selectedLineupIds.splice(idx, 1);
+    if (card) card.classList.remove("selected");
+  } else {
+    if (selectedLineupIds.length >= 9) return showToast("Máximo 9 jugadores", "warn");
+    selectedLineupIds.push(pid);
+    if (card) card.classList.add("selected");
+  }
+  
+  $("lineup-lbl-count").textContent = `${selectedLineupIds.length} / 9`;
+  $("btn-start-match").classList.toggle("disabled", selectedLineupIds.length !== 9);
+}
+
+function confirmLineup() {
+  if (selectedLineupIds.length !== 9) return;
+  const { mode, level, rivalData } = pendingMatchParams;
+  closeLineup();
+  startMatch(mode, level, rivalData, selectedLineupIds);
+}
+
+function closeLineup() {
+  $("lineup-modal").classList.add("hidden");
+}
+
 function generateRandomTeam(level = "EASY") {
   const team = [];
   const slots = ["SP","SP","SP","RP","RP","C","1B","2B","3B","SS","OF","OF","OF","DH"];
@@ -774,7 +824,7 @@ function generateRandomTeam(level = "EASY") {
   });
   return team;
 }
-function startMatch(mode, level = "EASY", rivalData = null) {
+function startMatch(mode, level = "EASY", rivalData = null, customLineup = null) {
   closeGameMenu();
   const homeTeam = getTeam(GS.teamId);
   
@@ -793,7 +843,7 @@ function startMatch(mode, level = "EASY", rivalData = null) {
     inning: 1,
     homeScore: 0,
     awayScore: 0,
-    homeRoster: (GS.roster && GS.roster.length) ? [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9) : [1,2,3,4,5,6,7,8,9],
+    homeRoster: customLineup || [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
     awayRoster: (mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
     currentStat: null,
     isLocked: false,

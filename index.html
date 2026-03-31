@@ -131,6 +131,23 @@
     <div id="market-empty" class="no-results hidden">No se encontraron jugadores disponibles.</div>
   </section>
 
+  <!-- ── PREPARAR ALINEACIÓN ── -->
+  <div id="lineup-modal" class="modal hidden">
+    <div class="modal-content lineup-builder">
+      <div class="modal-header">
+        <h2>📋 PREPARAR ALINEACIÓN</h2>
+        <span class="modal-close" onclick="closeLineup()">&times;</span>
+      </div>
+      <div class="lineup-info">
+        <p>Selecciona exactamente <strong id="lineup-lbl-count">0 / 9</strong> jugadores para iniciar el partido.</p>
+      </div>
+      <div id="lineup-grid" class="cards-grid lineup-grid"></div>
+      <div class="modal-footer" style="padding-top:1rem; border-top:1px solid rgba(255,255,255,.1)">
+        <button id="btn-start-match" class="btn-primary disabled" onclick="confirmLineup()" style="width:100%">¡CANTAR PLAY! ⚾</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── SOBRE DIARIO ── -->
   <section id="sec-daily" class="section">
     <div class="section-header">
@@ -233,9 +250,9 @@
             <strong>VS COMPUTADORA</strong>
             <span>Elige el nivel de dificultad:</span>
             <div class="gm-levels">
-              <button class="btn-level easy" onclick="startMatch('AI', 'EASY')">Fácil 💰80</button>
-              <button class="btn-level medium" onclick="startMatch('AI', 'MEDIUM')">Medio 💰150</button>
-              <button class="btn-level hard" onclick="startMatch('AI', 'HARD')">Difícil 💰350</button>
+              <button class="btn-level easy" onclick="openLineup('AI', 'EASY')">Fácil 💰80</button>
+              <button class="btn-level medium" onclick="openLineup('AI', 'MEDIUM')">Medio 💰150</button>
+              <button class="btn-level hard" onclick="openLineup('AI', 'HARD')">Difícil 💰350</button>
             </div>
           </div>
         </div>
