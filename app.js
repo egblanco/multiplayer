@@ -782,7 +782,7 @@ function startMatch(mode, level = "EASY", rivalData = null) {
     inning: 1,
     homeScore: 0,
     awayScore: 0,
-    homeRoster: [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
+    homeRoster: (GS.roster && GS.roster.length) ? [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9) : [1,2,3,4,5,6,7,8,9],
     awayRoster: (mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
     currentStat: null,
     isLocked: false
@@ -808,72 +808,88 @@ function startMatch(mode, level = "EASY", rivalData = null) {
 // (End of Match System)
 
 function nextInning() {
-  if (matchState.inning > 9) {
-    finishMatch();
-    return;
-  }
-  if (matchState.isLocked) return;
-  matchState.isLocked = true;
-  
-  const btn = $("m-actions").querySelector("button");
-  if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
-
-  // Clear previous
-  $("m-battle-res").style.display = "none";
-  $("m-stat-value").textContent = "BATEANDO...";
-
-  // Pick random active players (cycle through the 9 selected)
-  const homeP = getPlayerById(matchState.homeRoster[(matchState.inning - 1) % 9]);
-  const awayP = getPlayerById(matchState.awayRoster[(matchState.inning - 1) % 9]);
-
-  // Visuals - append with a tiny delay for feel
-  $("m-card-home").innerHTML = "";
-  $("m-card-away").innerHTML = "";
-  const cardH = makeCard(homeP);
-  const cardA = makeCard(awayP);
-  $("m-card-home").appendChild(cardH);
-  $("m-card-away").appendChild(cardA);
-  
-  $("m-inning").textContent = matchState.inning;
-
-  // Battle Logic
-  const isPitcher = homeP.stats.ERA !== undefined;
-  const stats = isPitcher ? ["ERA", "WHIP", "SO"] : ["AVG", "OPS", "HR"];
-  const stat = stats[Math.floor(Math.random() * stats.length)];
-  matchState.currentStat = stat;
-
-  $("m-stat-name").textContent = "BATAZO POR: " + stat;
-  
-  const valH = homeP.stats[stat];
-  const valA = awayP.stats[stat];
-
-  setTimeout(() => {
-    $("m-stat-value").textContent = `${valH} vs ${valA}`;
-    
-    let homeWins = false;
-    if (stat === "ERA" || stat === "WHIP") {
-      homeWins = valH < valA;
-    } else {
-      homeWins = valH > valA;
+  try {
+    if (matchState.inning > 9) {
+      finishMatch();
+      return;
     }
-
-    if (homeWins) {
-      matchState.homeScore++;
-      showBattleResult("¡CARRERA!", "#4caf50");
-    } else if (valH === valA) {
-      showBattleResult("OUT", "#aaa");
-    } else {
-      matchState.awayScore++;
-      showBattleResult("RIVAL ANOTA", "#ef5350");
-    }
-
-    $("m-home-score").textContent = matchState.homeScore;
-    $("m-away-score").textContent = matchState.awayScore;
+    if (matchState.isLocked) return;
+    matchState.isLocked = true;
     
-    matchState.inning++;
+    // Safety watchdog: auto-unlock if stuck for 3 seconds
+    setTimeout(() => { if (matchState.isLocked) { matchState.isLocked = false; const b = $("m-actions").querySelector("button"); if(b) b.disabled = false; } }, 3000);
+
+    const btn = $("m-actions").querySelector("button");
+    if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
+
+    // Clear previous UI
+    $("m-battle-res").style.display = "none";
+    $("m-stat-value").textContent = "BATEANDO...";
+
+    // Pick players safely
+    const hIdx = (matchState.inning - 1) % (matchState.homeRoster.length || 1);
+    const aIdx = (matchState.inning - 1) % (matchState.awayRoster.length || 1);
+    
+    let homeP = getPlayerById(matchState.homeRoster[hIdx]);
+    let awayP = getPlayerById(matchState.awayRoster[aIdx]);
+    
+    // Final fallbacks if missing
+    if (!homeP) homeP = getPlayerById(1) || PLAYERS[0];
+    if (!awayP) awayP = getPlayerById(2) || PLAYERS[1];
+
+    // Build cards
+    $("m-card-home").innerHTML = "";
+    $("m-card-away").innerHTML = "";
+    $("m-card-home").appendChild(makeCard(homeP));
+    $("m-card-away").appendChild(makeCard(awayP));
+    
+    $("m-inning").textContent = matchState.inning;
+
+    // Stat Battle
+    const isPitcher = homeP.stats.ERA !== undefined;
+    const statsDef = isPitcher ? ["ERA", "WHIP", "SO"] : ["AVG", "OPS", "HR"];
+    const statDef = statsDef[Math.floor(Math.random() * statsDef.length)];
+    matchState.currentStat = statDef;
+
+    $("m-stat-name").textContent = "DUELO POR: " + statDef;
+    
+    const valH = homeP.stats[statDef] || 0;
+    const valA = awayP.stats[statDef] || 0;
+
+    setTimeout(() => {
+      $("m-stat-value").textContent = `${valH} vs ${valA}`;
+      
+      let homeWins = false;
+      if (statDef === "ERA" || statDef === "WHIP") {
+        homeWins = valH < valA;
+      } else {
+        homeWins = valH > valA;
+      }
+
+      if (homeWins) {
+        matchState.homeScore++;
+        showBattleResult("¡CARRERA!", "#4caf50");
+      } else if (valH === valA) {
+        showBattleResult("OUT", "#aaa");
+      } else {
+        matchState.awayScore++;
+        showBattleResult("RIVAL ANOTA", "#ef5350");
+      }
+
+      $("m-home-score").textContent = matchState.homeScore;
+      $("m-away-score").textContent = matchState.awayScore;
+      
+      matchState.inning++;
+      matchState.isLocked = false;
+      if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+    }, 1000); // Faster feedback
+  } catch (err) {
+    console.error("Match Error:", err);
     matchState.isLocked = false;
-    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
-  }, 1200);
+    alert("¡Ups! Hubo un error en el campo. Sigue jugando.");
+    matchState.inning++;
+    nextInning();
+  }
 }
 
 function showBattleResult(text, color) {
