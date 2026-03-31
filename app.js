@@ -644,7 +644,8 @@ function generateShortId() {
 }
 
 function hostOnlineGame(mode = null) {
-  if (peer) peer.destroy();
+  if (peer) { try { peer.destroy(); } catch(e){} }
+  peer = null;
   isHost = true;
   wagerMode = (mode === 'WAGER');
   if (wagerMode) return openWagerSelector();
@@ -757,7 +758,7 @@ function openWagerSelector() {
   selectedLineupIds = [];
   
   $("lineup-modal").classList.remove("hidden");
-  $("lineup-lbl-count").textContent = `SELECCIONA ${totalR} PRODUCTOS PARA APOSTAR (1 POR RONDA)`;
+  $("lineup-lbl-count").textContent = `APUESTA ${totalR} JUGADORES (1 POR RONDA)`;
   $("btn-start-match").classList.add("disabled");
   $("btn-start-match").textContent = "CONFIRMAR APUESTAS 💎";
   
@@ -771,16 +772,15 @@ function openWagerSelector() {
       const idx = selectedLineupIds.indexOf(pid);
       if (idx > -1) {
         selectedLineupIds.splice(idx, 1);
-        document.getElementById(`wager-card-${pid}`).classList.remove("selected");
+        card.classList.remove("selected");
       } else {
-        if (selectedLineupIds.length >= totalR) return showToast(`Solo ${totalR} cartas para apostar`, "warn");
+        if (selectedLineupIds.length >= totalR) return showToast(`Solo ${totalR} cartas`, "warn");
         selectedLineupIds.push(pid);
-        document.getElementById(`wager-card-${pid}`).classList.add("selected");
+        card.classList.add("selected");
       }
-      $("lineup-lbl-count").textContent = `Apostando: ${selectedLineupIds.length} / ${totalR}`;
+      $("lineup-lbl-count").textContent = `Faltan: ${totalR - selectedLineupIds.length}`;
       $("btn-start-match").classList.toggle("disabled", selectedLineupIds.length !== totalR);
     });
-    card.id = `wager-card-${pid}`;
     grid.appendChild(card);
   });
 }
