@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css"/>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -239,13 +240,22 @@
           </div>
         </div>
       </div>
-      <div class="gm-option" onclick="startOnlineSearch()">
+      <div class="gm-option" style="cursor:default">
         <div class="gmo-icon">🌐</div>
         <div class="gmo-text">
-          <strong>BUSCAR EN LÍNEA</strong>
-          <span>Juega contra el mundo (BETA)</span>
-          <span class="gmo-reward">Premio: 💰 500</span>
-          <div id="online-status" class="online-search-status hidden">Buscando rival...</div>
+          <strong>MULTIJUGADOR REAL (BETA)</strong>
+          <span>Juega contra un amigo a distancia</span>
+          <div class="multi-actions">
+            <div id="multi-setup">
+              <button class="btn-level medium" onclick="hostOnlineGame()">CREAR SALA</button>
+              <div style="margin-top:.5rem; display:flex; gap:.5rem">
+                <input type="text" id="join-room-id" placeholder="ID de sala..." class="form-input" style="padding:.3rem">
+                <button class="btn-level easy" onclick="joinOnlineGame()">UNIRSE</button>
+              </div>
+            </div>
+            <div id="online-status" class="online-search-status hidden">Esperando rival...</div>
+            <div id="room-id-display" class="room-id-pill hidden">TU ID: <span id="my-peer-id">...</span></div>
+          </div>
         </div>
       </div>
     </div>

@@ -664,7 +664,6 @@ function closeWelcome() {
 function buildTeamFilterDropdown(selId) {
   const sel = document.getElementById(selId);
   if (!sel) return;
-  // remove existing options except first
   while (sel.options.length > 1) sel.remove(1);
   TEAMS.forEach(t => {
     const o = document.createElement("option");
@@ -678,7 +677,7 @@ function buildTeamFilterDropdown(selId) {
 //  MATCH SYSTEM
 // ══════════════════════════════════════════════
 let matchState = {
-  mode: null, // "AI" or "HUMAN"
+  mode: null,
   level: "EASY",
   inning: 1,
   homeScore: 0,
@@ -686,6 +685,7 @@ let matchState = {
   homeRoster: [],
   awayRoster: [],
   currentStat: null,
+  isLocked: false
 };
 
 function openGameMenu() {
@@ -701,38 +701,80 @@ function closeGameMenu(e) {
 function generateRandomTeam(level = "EASY") {
   const team = [];
   const slots = ["SP","SP","SP","RP","RP","C","1B","2B","3B","SS","OF","OF","OF","DH"];
-  
-  // Rating ranges for levels
   let minR = 60, maxR = 75;
   if (level === "MEDIUM") { minR = 78; maxR = 86; }
   if (level === "HARD") { minR = 88; maxR = 100; }
-
   slots.forEach(pos => {
     let pool = PLAYERS.filter(p => p.pos === pos && p.rating >= minR && p.rating <= maxR);
-    if (!pool.length) pool = PLAYERS.filter(p => p.pos === pos); // fallback
+    if (!pool.length) pool = PLAYERS.filter(p => p.pos === pos);
     const p = pool[Math.floor(Math.random() * pool.length)];
     if (p) team.push(p.id);
   });
   return team;
 }
 
-function startOnlineSearch() {
-  const status = $("online-status");
-  status.classList.remove("hidden");
-  setTimeout(() => {
-    status.classList.add("hidden");
-    startMatch("ONLINE", "HARD"); // Real matches are hard!
-  }, 3000);
+let peer = null;
+let conn = null;
+
+function hostOnlineGame() {
+  if (peer) return;
+  $("multi-setup").classList.add("hidden");
+  $("online-status").classList.remove("hidden");
+  $("online-status").textContent = "Generando sala...";
+
+  peer = new Peer();
+  peer.on('open', (id) => {
+    $("online-status").textContent = "Esperando rival...";
+    $("my-peer-id").textContent = id;
+    $("room-id-display").classList.remove("hidden");
+  });
+
+  peer.on('connection', (c) => {
+    conn = c;
+    setupConnection();
+  });
 }
 
-function startMatch(mode, level = "EASY") {
+function joinOnlineGame() {
+  const rid = $("join-room-id").value.trim();
+  if (!rid) return alert("Introduce un ID de sala");
+  
+  if (peer) peer.destroy();
+  peer = new Peer();
+  
+  peer.on('open', () => {
+    conn = peer.connect(rid);
+    setupConnection();
+  });
+}
+
+function setupConnection() {
+  conn.on('open', () => {
+    conn.send({ type: 'HANDSHAKE', username: GS.username, teamId: GS.teamId, roster: GS.roster });
+  });
+
+  conn.on('data', (data) => {
+    if (data.type === 'HANDSHAKE') {
+      startMatch("ONLINE_REAL", "HARD", data);
+      if (peer.id < conn.peer) {
+         conn.send({ type: 'HANDSHAKE', username: GS.username, teamId: GS.teamId, roster: GS.roster });
+      }
+    }
+  });
+}
+
+function startMatch(mode, level = "EASY", rivalData = null) {
   closeGameMenu();
   const homeTeam = getTeam(GS.teamId);
   
-  let awayTeam;
-  if(mode === "AI") awayTeam = { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' };
-  else if(mode === "ONLINE") awayTeam = { name: "RIVAL_MOD" + Math.floor(Math.random()*999), emoji: "🔥", primary: "#c4a000" };
-  else awayTeam = { name: "Rival", emoji: "👤", primary: "#444" };
+  let awayTeamDesc;
+  if(mode === "AI") awayTeamDesc = { name: "IA " + level.charAt(0), emoji: "🤖", primary: level==='HARD'?'#f44336':'#555' };
+  else if(mode === "ONLINE") awayTeamDesc = { name: "RIVAL_MOD" + Math.floor(Math.random()*999), emoji: "🔥", primary: "#c4a000" };
+  else if(mode === "ONLINE_REAL" && rivalData) {
+    const rTeam = getTeam(rivalData.teamId);
+    awayTeamDesc = { name: rivalData.username, emoji: rTeam ? rTeam.emoji : "👤", primary: rTeam ? rTeam.primary : "#c4a000" };
+  }
+  else awayTeamDesc = { name: "Rival", emoji: "👤", primary: "#444" };
 
   matchState = {
     mode: mode,
@@ -741,43 +783,57 @@ function startMatch(mode, level = "EASY") {
     homeScore: 0,
     awayScore: 0,
     homeRoster: [...GS.roster].sort(() => 0.5 - Math.random()).slice(0, 9),
-    awayRoster: generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
-    currentStat: null
+    awayRoster: (mode === "ONLINE_REAL" && rivalData) ? rivalData.roster.slice(0, 9) : generateRandomTeam(mode === "ONLINE" ? "HARD" : level).sort(() => 0.5 - Math.random()).slice(0, 9),
+    currentStat: null,
+    isLocked: false
   };
 
   // Setup UI
-  $("m-home-name").textContent = homeTeam.name;
-  $("m-home-logo").textContent = homeTeam.emoji;
-  $("m-away-name").textContent = awayTeam.name;
-  $("m-away-logo").textContent = awayTeam.emoji;
+  $("m-home-name").textContent = GS.customTeam || homeTeam.name;
+  $("m-home-logo").textContent = homeTeam ? homeTeam.emoji : "⚾";
+  $("m-away-name").textContent = awayTeamDesc.name;
+  $("m-away-logo").textContent = awayTeamDesc.emoji;
   $("m-home-score").textContent = "0";
   $("m-away-score").textContent = "0";
   $("m-inning").textContent = "1";
+  $("m-card-home").innerHTML = "";
+  $("m-card-away").innerHTML = "";
   
-  document.documentElement.style.setProperty("--home-primary", homeTeam.primary);
-  document.documentElement.style.setProperty("--away-primary", awayTeam.primary);
+  document.documentElement.style.setProperty("--home-primary", homeTeam ? homeTeam.primary : "#444");
+  document.documentElement.style.setProperty("--away-primary", awayTeamDesc.primary);
 
   $("match-modal").classList.remove("hidden");
-  nextInning();
 }
+
+// (End of Match System)
 
 function nextInning() {
   if (matchState.inning > 9) {
     finishMatch();
     return;
   }
+  if (matchState.isLocked) return;
+  matchState.isLocked = true;
+  
+  const btn = $("m-actions").querySelector("button");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
 
-  // Pick random active players
-  const homeP = getPlayerById(matchState.homeRoster[matchState.inning - 1] || matchState.homeRoster[0]);
-  const awayP = getPlayerById(matchState.awayRoster[matchState.inning - 1] || matchState.awayRoster[0]);
+  // Clear previous
+  $("m-battle-res").style.display = "none";
+  $("m-stat-value").textContent = "BATEANDO...";
 
-  // Visuals
+  // Pick random active players (cycle through the 9 selected)
+  const homeP = getPlayerById(matchState.homeRoster[(matchState.inning - 1) % 9]);
+  const awayP = getPlayerById(matchState.awayRoster[(matchState.inning - 1) % 9]);
+
+  // Visuals - append with a tiny delay for feel
   $("m-card-home").innerHTML = "";
   $("m-card-away").innerHTML = "";
-  $("m-card-home").appendChild(makeCard(homeP));
-  $("m-card-away").appendChild(makeCard(awayP));
+  const cardH = makeCard(homeP);
+  const cardA = makeCard(awayP);
+  $("m-card-home").appendChild(cardH);
+  $("m-card-away").appendChild(cardA);
   
-  $("m-battle-res").style.display = "none";
   $("m-inning").textContent = matchState.inning;
 
   // Battle Logic
@@ -790,16 +846,15 @@ function nextInning() {
   
   const valH = homeP.stats[stat];
   const valA = awayP.stats[stat];
-  $("m-stat-value").textContent = "VS";
 
   setTimeout(() => {
     $("m-stat-value").textContent = `${valH} vs ${valA}`;
     
     let homeWins = false;
     if (stat === "ERA" || stat === "WHIP") {
-      homeWins = valH < valA; // Lower is better for pitchers
+      homeWins = valH < valA;
     } else {
-      homeWins = valH > valA; // Higher is better for hitters
+      homeWins = valH > valA;
     }
 
     if (homeWins) {
@@ -809,13 +864,16 @@ function nextInning() {
       showBattleResult("OUT", "#aaa");
     } else {
       matchState.awayScore++;
-      showBattleResult("PUNTO RIVAL", "#ef5350");
+      showBattleResult("RIVAL ANOTA", "#ef5350");
     }
 
     $("m-home-score").textContent = matchState.homeScore;
     $("m-away-score").textContent = matchState.awayScore;
+    
     matchState.inning++;
-  }, 1000);
+    matchState.isLocked = false;
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  }, 1200);
 }
 
 function showBattleResult(text, color) {
@@ -886,4 +944,23 @@ function showToast(msg, type = "info") {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3000);
 }
-
+// ══════════════════════════════════════════════
+//  INITIALIZATION
+// ══════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+  loadGS();
+  if (GS.loggedIn) {
+    showGame();
+  } else {
+    showLogin();
+  }
+  
+  // Hide splash
+  setTimeout(() => {
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.style.opacity = "0";
+      setTimeout(() => splash.classList.add("hidden"), 800);
+    }
+  }, 2400);
+});
