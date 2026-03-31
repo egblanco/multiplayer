@@ -869,54 +869,59 @@ function toggleLineup(pid) {
     selectedLineupIds.splice(idx, 1);
     if (card) card.classList.remove("selected");
   } else {
-    if (selectedLineupIds.length >= 9) return showToast("Máximo 9 jugadores", "warn");
-    
-    // Position Validation (5 P, 4 OF)
-    const counts = getLineupPositionCounts();
+    // Position Validation (5 P, 5 OF, 4 IF, 1 C) - Total 15
+    const c = getLineupPositionCounts();
     const isP = p.pos === "SP" || p.pos === "RP";
+    const isIF = ["1B","2B","3B","SS"].includes(p.pos);
     const isOF = p.pos === "OF";
+    const isC = p.pos === "C";
 
-    if (isP && counts.p >= 5) return showToast("Límite: 5 Pitchers", "warn");
-    if (isOF && counts.of >= 4) return showToast("Límite: 4 Outfielders", "warn");
-    if (!isP && !isOF) return showToast("Solo permitidos: P y OF", "warn");
+    if (isP && c.p >= 5) return showToast("Límite: 5 Pitchers", "warn");
+    if (isOF && c.of >= 5) return showToast("Límite: 5 Outfielders", "warn");
+    if (isIF && c.if >= 4) return showToast("Límite: 4 Infielders", "warn");
+    if (isC && c.c >= 1) return showToast("Límite: 1 Catcher", "warn");
 
     selectedLineupIds.push(pid);
     if (card) card.classList.add("selected");
   }
-  
   updateLineupLabel();
 }
 
 function getLineupPositionCounts() {
-  const counts = { p:0, of:0 };
+  const counts = { p:0, of:0, if:0, c:0 };
   selectedLineupIds.forEach(id => {
     const player = getPlayerById(id);
-    if (!player) return;
-    if (player.pos === "SP" || player.pos === "RP") counts.p++;
-    else if (player.pos === "OF") counts.of++;
+    if (player) {
+      if (player.pos === "SP" || player.pos === "RP") counts.p++;
+      else if (player.pos === "OF") counts.of++;
+      else if (["1B","2B","3B","SS"].includes(player.pos)) counts.if++;
+      else if (player.pos === "C") counts.c++;
+    }
   });
   return counts;
 }
 
 function updateLineupLabel() {
   const c = getLineupPositionCounts();
-  $("lineup-lbl-count").innerHTML = `Pitchers (5): ${c.p}/5 | Outfield (4): ${c.of}/4`;
-  const isComplete = (c.p === 5 && c.of === 4);
+  $("lineup-lbl-count").innerHTML = `P: ${c.p}/5 | OF: ${c.of}/5 | IF: ${c.if}/4 | C: ${c.c}/1`;
+  const isComplete = (c.p === 5 && c.of === 5 && c.if === 4 && c.c === 1);
   $("btn-start-match").classList.toggle("disabled", !isComplete);
 }
 
 function confirmLineup() {
   if (wagerMode) {
     closeLineup();
-    $("btn-start-match").textContent = "¡CANTAR PLAY! ⚾"; // Reset label
+    $("btn-start-match").textContent = "¡CANTAR PLAY! ⚾";
     if (isHost) startHost();
     else if (pendingMatchParams.rivalData) {
-       // already joined and handshake received, start match
        startMatch("WAGER", "HARD", pendingMatchParams.rivalData, [myWagerId]);
     }
     return;
   }
-  if (selectedLineupIds.length !== 9) return;
+  const c = getLineupPositionCounts();
+  const isComplete = (c.p === 5 && c.of === 5 && c.if === 4 && c.c === 1);
+  if (!isComplete) return showToast("Alineación incompleta (necesitas 15)", "warn");
+  
   const { mode, level, rivalData } = pendingMatchParams;
   closeLineup();
   startMatch(mode, level, rivalData, selectedLineupIds);
@@ -1008,8 +1013,8 @@ function nextInning() {
   if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
 
   // Pick players
-  const hIdx = (matchState.inning - 1) % 9;
-  const aIdx = (matchState.inning - 1) % 9;
+  const hIdx = (matchState.inning - 1) % matchState.homeRoster.length;
+  const aIdx = (matchState.inning - 1) % matchState.awayRoster.length;
   const homePObj = getPlayerById(matchState.homeRoster[hIdx]) || PLAYERS[0];
   const awayPObj = getPlayerById(matchState.awayRoster[aIdx]) || PLAYERS[1];
 
