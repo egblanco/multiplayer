@@ -7,6 +7,13 @@ function $(id) { return document.getElementById(id); }
 
 // ── GAME STATE ────────────────────────────────
 let GS = null; // loaded from localStorage
+let peer = null;
+let conn = null;
+let isHost = false;
+let wagerMode = false;
+let selectedLineupIds = [];
+let pendingMatchParams = null;
+let wagerResults = []; 
 
 function loadGS() {
   const raw = localStorage.getItem("mlb_game_state");
@@ -636,6 +643,9 @@ function closeCardModal(e) {
 // ══════════════════════════════════════════════
 //  WELCOME MODAL
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  MULTIPLAYER SYSTEM (PEERJS)
+// ══════════════════════════════════════════════
 function generateShortId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
   let res = "";
@@ -644,50 +654,58 @@ function generateShortId() {
 }
 
 function hostOnlineGame(mode = null) {
+  console.log("Iniciando HOST...", mode);
   if (peer) { try { peer.destroy(); } catch(e){} }
   peer = null;
   isHost = true;
   wagerMode = (mode === 'WAGER');
+  
   if (wagerMode) return openWagerSelector();
   startHost();
 }
 
 function startHost() {
-  if (peer) { try { peer.destroy(); } catch(e){} }
-  
   $("multi-setup").classList.add("hidden");
   $("online-status").classList.remove("hidden");
-  $("online-status").textContent = "Generando código...";
+  $("online-status").textContent = "Generando sala...";
 
   const sid = generateShortId();
-  peer = new Peer(sid);
-  
-  peer.on('open', (id) => {
-    $("online-status").textContent = wagerMode ? "APUESTA ACTIVADA 💎" : "SALA CREADA";
-    $("my-peer-id").textContent = id;
-    $("room-id-display").classList.remove("hidden");
-  });
+  try {
+    peer = new Peer(sid);
+    
+    peer.on('open', (id) => {
+      console.log("Sala abierta ID:", id);
+      $("online-status").textContent = wagerMode ? "APUESTA ACTIVADA 💎" : "SALA CREADA";
+      $("my-peer-id").textContent = id;
+      $("room-id-display").classList.remove("hidden");
+    });
 
-  peer.on('error', (err) => {
-    if (err.type === 'unavailable-id') {
-      setTimeout(startHost, 300); // Retry after short delay
-    } else {
-      console.error("PeerJS Error:", err.type);
-      $("online-status").textContent = "Error: " + err.type;
-      setTimeout(() => location.reload(), 2000);
-    }
-  });
+    peer.on('error', (err) => {
+      console.error("Peer Error:", err.type);
+      if (err.type === 'unavailable-id') {
+        setTimeout(startHost, 300);
+      } else {
+        $("online-status").textContent = "Error: " + err.type;
+        setTimeout(() => location.reload(), 2000);
+      }
+    });
 
-  peer.on('connection', (c) => {
-    conn = c;
-    setupConnection();
-  });
+    peer.on('connection', (c) => {
+      console.log("Rival conectado!");
+      conn = c;
+      setupConnection();
+    });
+  } catch(e) {
+    console.error("Fatal Peer Error:", e);
+    alert("Error al iniciar PeerJS");
+  }
 }
 
 function joinOnlineGame() {
   const rid = $("join-room-id").value.trim().toUpperCase();
   if (!rid) return alert("Introduce un código");
   
+  console.log("Intentando UNIRSE a:", rid);
   isHost = false;
   if (peer) { try { peer.destroy(); } catch(e){} }
   
@@ -698,22 +716,20 @@ function joinOnlineGame() {
   peer.on('open', () => {
     conn = peer.connect(rid);
     
-    // Watchdog for connection timeout
     const timeout = setTimeout(() => {
       if (conn && !conn.open) {
-        alert("No se pudo conectar con " + rid);
+        alert("No se pudo conectar. Verifica el ID.");
         location.reload();
       }
     }, 8000);
 
     setupConnection();
-    
     conn.on('open', () => clearTimeout(timeout));
   });
 
   peer.on('error', (err) => {
     console.error("Join Error:", err);
-    alert("Error al intentar unirse.");
+    alert("Error al conectar.");
     location.reload();
   });
 }
@@ -735,6 +751,7 @@ function setupConnection() {
   });
 
   conn.on('data', (data) => {
+    console.log("Data recibida:", data.type);
     if (data.type === 'HANDSHAKE') {
       if (data.isWager && !selectedLineupIds.length) {
          wagerMode = true;
@@ -847,8 +864,6 @@ function closeGameMenu(e) {
   }
 }
 
-let pendingMatchParams = null;
-let selectedLineupIds = [];
 
 function openLineup(mode, level = "EASY", rivalData = null) {
   pendingMatchParams = { mode, level, rivalData };
