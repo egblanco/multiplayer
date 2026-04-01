@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-//  MLB CARD GAME – APP.JS  (Manager Mode 2025)
+//  MLB CARD GAME – APP.JS  (Manager Mode 2025) - V.2.0.1
 // ══════════════════════════════════════════════
 
 // ── SAFE ELEMENT HELPER ───────────────────────
