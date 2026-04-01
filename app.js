@@ -775,10 +775,12 @@ function openWagerSelector() {
   selectedLineupIds = [];
   
   $("lineup-modal").classList.remove("hidden");
-  $("lineup-lbl-count").textContent = `APUESTA ${totalR} JUGADORES (1 POR RONDA)`;
+  $("wager-preview-panel").classList.remove("hidden");
+  $("lineup-lbl-count").textContent = `APUESTA ${totalR} JUGADORES (1 POR ENTRADA)`;
   $("btn-start-match").classList.add("disabled");
   $("btn-start-match").textContent = "CONFIRMAR APUESTAS 💎";
   
+  updateWagerPreview();
   const grid = $("lineup-grid");
   grid.innerHTML = "";
   
@@ -795,10 +797,24 @@ function openWagerSelector() {
         selectedLineupIds.push(pid);
         card.classList.add("selected");
       }
+      updateWagerPreview();
       $("lineup-lbl-count").textContent = `Faltan: ${totalR - selectedLineupIds.length}`;
       $("btn-start-match").classList.toggle("disabled", selectedLineupIds.length !== totalR);
     });
     grid.appendChild(card);
+  });
+}
+
+function updateWagerPreview() {
+  const list = $("wager-preview-list");
+  list.innerHTML = "";
+  selectedLineupIds.forEach((pid, i) => {
+    const p = getPlayerById(pid);
+    const box = document.createElement("div");
+    box.style = "flex:0 0 70px; position:relative; animation:statZoom .2s forwards";
+    box.innerHTML = `<div style="font-size:10px; color:#aaa; position:absolute; top:-12px; left:0">E${i+1}</div>
+                     <div style="background:#1a1a1a; padding:4px; border-radius:6px; border:1px solid gold; font-size:11px; text-transform:uppercase; text-align:center; color:#fff">${p.name.split(' ')[0]}</div>`;
+    list.appendChild(box);
   });
 }
 
@@ -869,6 +885,7 @@ function openLineup(mode, level = "EASY", rivalData = null) {
   pendingMatchParams = { mode, level, rivalData };
   selectedLineupIds = [];
   $("lineup-modal").classList.remove("hidden");
+  $("wager-preview-panel").classList.add("hidden");
   updateLineupLabel();
   $("btn-start-match").classList.add("disabled");
   

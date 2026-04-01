@@ -141,7 +141,11 @@
       <div class="lineup-info">
         <p>Selecciona exactamente <strong id="lineup-lbl-count">0 / 9</strong> jugadores para iniciar el partido.</p>
       </div>
-      <div id="lineup-grid" class="cards-grid lineup-grid"></div>
+      <div id="wager-preview-panel" class="hidden" style="background:rgba(0,0,0,.4); padding:.8rem; border-radius:12px; margin-bottom:1rem; border:1px solid rgba(255,215,0,.3)">
+        <div style="font-size:.7rem; color:gold; margin-bottom:.5rem; text-transform:uppercase; letter-spacing:1px">Tu Lista de Apuestas (En orden de Entradas)</div>
+        <div id="wager-preview-list" style="display:flex; gap:.5rem; overflow-x:auto; padding-bottom:.3rem"></div>
+      </div>
+      <div id="lineup-grid" class="lineup-grid"></div>
       <div class="modal-footer" style="padding-top:1rem; border-top:1px solid rgba(255,255,255,.1)">
         <button id="btn-start-match" class="btn-primary disabled" onclick="confirmLineup()" style="width:100%">¡CANTAR PLAY! ⚾</button>
       </div>
