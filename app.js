@@ -1182,7 +1182,6 @@ function finishMatch() {
   saveGS();
   updateCoinsDisplay();
 
-  $("pm-emoji").textContent = won ? "🏆" : (draw ? "🤝" : "⚾");
   $("pm-title").textContent = won ? "¡VICTORIA!" : (draw ? "EMPATE" : "FIN DEL JUEGO");
   $("pm-score").textContent = `${matchState.homeScore} - ${matchState.awayScore}`;
   $("pm-reward").textContent = `Recibes 💰 ${reward}`;
