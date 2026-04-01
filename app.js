@@ -1186,6 +1186,18 @@ function finishMatch() {
   $("pm-score").textContent = `${matchState.homeScore} - ${matchState.awayScore}`;
   $("pm-reward").textContent = `Recibes 💰 ${reward}`;
 
+  // Update Photo
+  const imgEl = $("pm-victory-img");
+  if (imgEl && won) {
+    let src = "victory.png"; // Default
+    if (matchState.homeRoster.includes(1)) src = "judge_victory.png";
+    else if (matchState.homeRoster.includes(54)) src = "altuve_victory.png";
+    else if (matchState.homeRoster.includes(71)) src = "ohtani_victory.png";
+    imgEl.src = src;
+  } else if (imgEl) {
+    imgEl.src = "victory.png"; // Use generic for draw/loss
+  }
+
   $("post-match-modal").classList.remove("hidden");
 }
 
